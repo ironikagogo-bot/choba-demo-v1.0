@@ -51,6 +51,15 @@ if not db.list_contacts():
             db.upsert_contact(code, rank, cyc)
 
 
+# 見せる用インスタンス(DEMO)はデスクを最初から開いておく(「未開設」表示を避ける)
+if config.DEMO:
+    try:
+        deskservice.SERVICE.start("demo", 1.0)
+        deskservice.SERVICE.approve_login()
+    except Exception:
+        pass
+
+
 class Incoming(BaseModel):
     contact: str
     text: str

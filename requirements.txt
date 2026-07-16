@@ -1,5 +1,3 @@
-# クラウド配信用の最小依存(確実にビルドが通る構成)
-# ※ Web Push(pywebpush/py-vapid)はクラウドでは使わないため外している。
 fastapi>=0.110
 uvicorn>=0.29
 requests>=2.31
