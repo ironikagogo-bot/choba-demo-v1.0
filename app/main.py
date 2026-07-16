@@ -339,6 +339,12 @@ def customers_page():
     return FileResponse(os.path.join(STATIC_DIR, "customers.html"))
 
 
+@app.get("/demo")
+def demo_page():
+    """サーバー不要でも動く静的UXデモ(友人に見せる用・単体で完結)。"""
+    return FileResponse(os.path.join(STATIC_DIR, "demo.html"))
+
+
 class OnboardStart(BaseModel):
     user_id: str
 
