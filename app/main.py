@@ -164,6 +164,8 @@ async def android_notify(request: Request):
         big_text=str(data.get("big_text", "") or ""),
         sub_text=str(data.get("sub_text", "") or ""),
         text_lines=str(data.get("text_lines", "") or ""),
+        key=str(data.get("key", "") or ""),
+        ts=str(data.get("ts", "") or ""),
     )
     return res
 

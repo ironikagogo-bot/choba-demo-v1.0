@@ -64,28 +64,39 @@ def _is_summary(text: str) -> bool:
 
 
 class NotifyDedup:
-    """同じ通知の重複取り込みを防ぐ。LINE/Androidは同一通知を再掲することがある。
+    """通知の"再掲"(同一メッセージの重複POST)だけを弾く。本物の連投は通す。
 
-    - 相手ごとに直近の本文を覚え、同じ本文なら弾く
-    - 加えて、直近 window 秒に見た (contact, message) は弾く
+    設計方針(本人の要望「本物のメッセージを消さない」を最優先):
+    - 通知の一意ID(アプリが送る key+ts)が既出なら、同一通知の再掲とみなして弾く。
+    - ts が端末で揺れる対策として、同一(相手,本文)を"短い窓(既定3秒)"内に見た場合も再掲扱い。
+      → LINEの再掲はほぼ同時(ミリ秒〜数秒)なので拾える。
+    - 旧「相手の直前と同じ本文なら常に弾く」ルールは廃止。
+      本物の『はい』『はい』を消していたため。3秒より離れた同一本文は通す。
     """
 
-    def __init__(self, window_sec: float = 20.0):
+    def __init__(self, window_sec: float = 3.0):
         self.window_sec = window_sec
-        self._last_by_contact = {}       # contact -> message
-        self._seen = {}                  # (contact, message) -> ts
+        self._seen = {}        # (contact, message) -> ts
+        self._seen_ids = {}    # msg_id(key+ts) -> ts
 
-    def should_process(self, contact: str, message: str, now: float | None = None) -> bool:
+    def should_process(self, contact: str, message: str,
+                       now: float | None = None, msg_id: str | None = None) -> bool:
         now = now if now is not None else time.time()
-        key = (contact, message)
-        # 古い記録を掃除
+        # 古い記録を掃除(ID側は少し長めに保持=同一通知の再掲は間隔が空くこともある)
         for k, ts in list(self._seen.items()):
             if now - ts > self.window_sec:
                 del self._seen[k]
-        if self._last_by_contact.get(contact) == message:
+        for k, ts in list(self._seen_ids.items()):
+            if now - ts > 60:
+                del self._seen_ids[k]
+        # 1) 通知の一意ID(key+ts)が既出 → 同一通知の再掲
+        if msg_id:
+            if msg_id in self._seen_ids:
+                return False
+            self._seen_ids[msg_id] = now
+        # 2) ts揺れ対策: 同一(相手,本文)を短い窓内に見た → 再掲とみなす
+        pair = (contact, message)
+        if pair in self._seen:
             return False
-        if key in self._seen:
-            return False
-        self._last_by_contact[contact] = message
-        self._seen[key] = now
+        self._seen[pair] = now
         return True

@@ -152,7 +152,7 @@ class DeskService:
 
     def android_ingest(self, package: str, title: str, text: str,
                        ticker: str = "", big_text: str = "", sub_text: str = "",
-                       text_lines: str = "") -> dict:
+                       text_lines: str = "", key: str = "", ts: str = "") -> dict:
         """Androidの通知1件を取り込む。/api/android/notify から呼ばれる。
 
         長文などで title/text が空のとき、他の欄(big_text=大きな文字, text_lines=テキスト行,
@@ -189,8 +189,9 @@ class DeskService:
                 return {"status": "ignored"}
 
             contact, message = parsed["contact"], parsed["message"]
-            if not self.dedup.should_process(contact, message):
-                self.log(f"→ 重複のためスキップ: {contact}")
+            msg_id = f"{key}|{ts}" if (key or "").strip() else None
+            if not self.dedup.should_process(contact, message, msg_id=msg_id):
+                self.log(f"→ 重複のためスキップ: {contact}(同一通知の再掲)")
                 return {"status": "duplicate", "contact": contact}
 
             self.android_count += 1
