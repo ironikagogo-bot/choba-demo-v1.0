@@ -109,15 +109,20 @@ async function api(path, method, body){
 function esc(s){return (s==null?"":String(s)).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]})}
 
 /* ---------- LIST ---------- */
-var LST={q:"",rank:"",ak:"",av:""};
+var LST={q:"",rank:"",ak:"",av:"",kind:"customer"};
 async function viewList(){
   var app=document.getElementById("app");
   if(!DEFS.length){ try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){} }
   try{ TRAYCOUNT=((await api("/api/tray")).pending||[]).length }catch(e){}
   var qs="?q="+encodeURIComponent(LST.q)+(LST.ak?"&attr_key="+encodeURIComponent(LST.ak)+"&attr_val="+encodeURIComponent(LST.av):"");
   var list=[];
-  try{ list=(await api("/api/contacts/search"+qs)).contacts||[] }catch(e){ app.innerHTML=header("顧客リスト")+'<div class="err">読み込み失敗: '+esc(e.message)+'</div>'; return; }
-  if(LST.rank) list=list.filter(function(c){return c.rank===LST.rank});
+  var kindMap={peer:"peer",staff:"staff",ex:"excolleague"};
+  try{
+    if(LST.kind==="customer"){ list=(await api("/api/contacts/search"+qs)).contacts||[]; }
+    else{ list=((await api("/api/roster?kinds="+kindMap[LST.kind])).roster)||[];
+          if(LST.q){ var qq=LST.q; list=list.filter(function(c){return (c.code||"").indexOf(qq)>=0||(c.tags||"").indexOf(qq)>=0;}); } }
+  }catch(e){ app.innerHTML=header("顧客リスト")+'<div class="err">読み込み失敗: '+esc(e.message)+'</div>'; return; }
+  if(LST.rank&&LST.kind==="customer") list=list.filter(function(c){return c.rank===LST.rank});
   // 属性フィルタ用チップ(最初のchoice型属性の選択肢)
   var choiceDef=DEFS.find(function(d){return d.atype==="choice"&&d.options});
   var attrChips="";
@@ -135,6 +140,7 @@ async function viewList(){
       +'</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">'+tags+sake+'</div></div>';
   }).join("");
   app.innerHTML=header("顧客リスト", true)
+    +kindBar()
     +'<div class="search"><input id="q" placeholder="🔍 名前・タグ・メモで検索" value="'+esc(LST.q)+'"></div>'
     +'<div class="filt"><span class="fp'+(!LST.rank?" on":"")+'" onclick="setRank(\'\')">全員</span>'
     +'<span class="fp'+(LST.rank==="S"?" on":"")+'" onclick="setRank(\'S\')">S</span>'
@@ -151,6 +157,14 @@ function header(title, isList){
        +'<button class="b" onclick="go(\'attrs\')">属性</button><button class="b" onclick="go(\'new\')">＋ 新規</button>':'')+'</div>';
 }
 function setRank(r){LST.rank=r;viewList()}
+function kindBar(){
+  var K=[["customer","顧客"],["peer","同業者"],["staff","店内"],["ex","元同僚"]];
+  var seg=K.map(function(k){return '<span class="fp'+(LST.kind===k[0]?" on":"")+'" onclick="setKind(\''+k[0]+'\')">'+k[1]+'</span>';}).join("");
+  var move=(LST.kind==="staff")?'<span class="fp" style="margin-left:auto;color:#8a5a86;border-color:#d9c3d6" onclick="doTransfer()">→ 全員を元同僚へ（移籍）</span>':"";
+  return '<div class="filt">'+seg+move+'</div>';
+}
+function setKind(k){LST.kind=k;LST.rank="";viewList();}
+async function doTransfer(){ try{var r=await api("/api/transfer","POST",{from_kind:"staff",to_kind:"excolleague"});toast("移籍: "+(r.moved||0)+"名を元同僚へ");LST.kind="ex";viewList();}catch(e){toast("失敗: "+e.message);} }
 function toggleAttr(k,v){ if(LST.ak===k&&LST.av===v){LST.ak="";LST.av="";}else{LST.ak=k;LST.av=v;} viewList(); }
 
 /* ---------- CARD ---------- */
@@ -167,6 +181,9 @@ async function viewCard(code){
     +'<div class="hd" style="position:static;border-top:none"><div class="t" style="font-size:20px">'+esc(d.code)+' <span class="rk '+esc(d.rank)+'" style="display:inline-flex">'+esc(d.rank)+'</span></div><button class="b" onclick="go(\'edit/'+encodeURIComponent(code)+'\')">編集</button></div>'
     +'<div class="frow"><span class="fl">本名</span><span class="fv">'+esc(d.real_name||"—")+'</span></div>'
     +'<div class="frow"><span class="fl">電話番号</span><span class="fv">'+esc(d.phone||"—")+'</span></div>'
+    +(d.stand?'<div class="frow"><span class="fl">立場</span><span class="fv">'+({senior:"先輩",equal:"対等",junior:"後輩"}[d.stand]||"—")+'</span></div>':'')
+    +((d.kind&&d.kind!=="customer")?'<div class="frow"><span class="fl">種別</span><span class="fv">'+({peer:"同業者",staff:"店内",excolleague:"元同僚"}[d.kind]||d.kind)+'</span></div>':'')
+    +((d.birthday||d.kids_bday||d.founding)?'<div class="frow"><span class="fl">記念日</span><span class="fv" style="text-align:right">'+[d.birthday?"誕生日 "+esc(d.birthday):"",d.kids_bday?"子 "+esc(d.kids_bday):"",d.founding?"創立 "+esc(d.founding):""].filter(Boolean).join("<br>")+'</span></div>':'')
     +'<div class="frow"><span class="fl">呼び方</span><span class="fv">'+esc(d.nickname||"—")+'</span></div>'
     +'<div class="frow"><span class="fl">距離感</span><span class="fv"'+(d.register==="keigo_only"?' style="color:#C0402C"':'')+'>'+esc(regLabel(d.register))+'</span></div>'
     +'<div class="frow"><span class="fl">タグ</span><span class="fv">'+esc(d.tags||"—")+'</span></div>'
@@ -185,10 +202,14 @@ async function viewEdit(code){
   var app=document.getElementById("app");
   var isNew=!code;
   if(!DEFS.length){try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){}}
-  if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",real_name:"",phone:"",note_pos:"",note_neg:"",aliases:[],attrs:{}}; }
-  else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",real_name:d.real_name||"",phone:d.phone||"",note_pos:d.note_pos||"",note_neg:d.note_neg||"",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
+  if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",real_name:"",phone:"",note_pos:"",note_neg:"",stand:"",birthday:"",kids_bday:"",founding:"",kind:"customer",aliases:[],attrs:{}}; }
+  else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",real_name:d.real_name||"",phone:d.phone||"",note_pos:d.note_pos||"",note_neg:d.note_neg||"",stand:d.stand||"",birthday:d.birthday||"",kids_bday:d.kids_bday||"",founding:d.founding||"",kind:d.kind||"customer",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
   var regSeg=REG.map(function(r){return '<span class="'+(EF.register===r[0]?"on"+(r[0]==="keigo_only"?" red":""):"")+'" onclick="EF.register=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var rankSeg=["S","A","B"].map(function(r){return '<span class="'+(EF.rank===r?"on"+(r==="S"?" red":""):"")+'" onclick="EF.rank=\''+r+'\';renderEdit()">'+r+'</span>'}).join("");
+  var STANDS=[["","なし"],["senior","先輩"],["equal","対等"],["junior","後輩"]];
+  var standSeg=STANDS.map(function(r){return '<span class="'+(EF.stand===r[0]?"on":"")+'" onclick="EF.stand=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
+  var KINDS=[["customer","顧客"],["peer","同業者"],["staff","店内"],["excolleague","元同僚"]];
+  var kindSeg=KINDS.map(function(r){return '<span class="'+(EF.kind===r[0]?"on":"")+'" onclick="EF.kind=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var aliasList=EF.aliases.map(function(a){return '<div class="aliasrow">🔗 '+esc(a)+'</div>'}).join("");
   var attrItems=DEFS.map(function(df){
     var v=EF.attrs[df.key]||"";
@@ -210,6 +231,13 @@ async function viewEdit(code){
     +'<div class="fi"><label>呼び方</label><input id="ef_nick" value="'+esc(EF.nickname)+'" placeholder="例: あき"></div>'
     +'<div class="fi"><label>距離感</label><div class="seg">'+regSeg+'</div></div>'
     +'<div class="fi"><label>タグ</label><input id="ef_tags" value="'+esc(EF.tags)+'" placeholder="VIP,常連 (カンマ区切り)"></div>'
+    +'<div class="fi"><label>種別</label><div class="seg">'+kindSeg+'</div></div>'
+    +'<div class="fi"><label>立場（先輩後輩）</label><div class="seg">'+standSeg+'</div></div>'
+    +'</div>'
+    +'<div class="glabel">記念日（お祝いLINE用・ご命日は扱いません）</div><div class="fg">'
+    +'<div class="fi"><label>誕生日（月-日）</label><input id="ef_bday" value="'+esc(EF.birthday)+'" placeholder="例: 07-20" inputmode="numeric"></div>'
+    +'<div class="fi"><label>お子様・お孫様の誕生日</label><input id="ef_kids" value="'+esc(EF.kids_bday)+'" placeholder="例: 長男:03-15, お孫さん:07-28"></div>'
+    +'<div class="fi"><label>会社の創立記念日（月-日）</label><input id="ef_found" value="'+esc(EF.founding)+'" placeholder="例: 04-01（社長・オーナー様に）"></div>'
     +'</div>'
     +(isNew?'':'<div class="glabel">🔗 LINE紐付け</div>'
       +'<div style="font-size:11px;color:#8D8674;line-height:1.7;margin:0 16px 4px">LINEの表示名をこの顧客に結びつけると、次からその名前で来た受信が自動でこのカードに入ります（表示名が変わった時だけ結び直す）。</div>'
@@ -234,6 +262,9 @@ function syncEF(){
   if(g("ef_phone")!==undefined)EF.phone=g("ef_phone");
   if(g("ef_pos")!==undefined)EF.note_pos=g("ef_pos");
   if(g("ef_neg")!==undefined)EF.note_neg=g("ef_neg");
+  if(g("ef_bday")!==undefined)EF.birthday=g("ef_bday");
+  if(g("ef_kids")!==undefined)EF.kids_bday=g("ef_kids");
+  if(g("ef_found")!==undefined)EF.founding=g("ef_found");
 }
 async function addAlias(){
   syncEF();
@@ -248,7 +279,8 @@ async function saveEdit(isNew){
   if(!EF.code){toast("名前を入れてください");return;}
   try{
     if(isNew){ await api("/api/contacts","POST",{code:EF.code,rank:EF.rank,tags:EF.tags,note:EF.note}); }
-    await api("/api/contacts/"+encodeURIComponent(EF.code),"POST",{rank:EF.rank,nickname:EF.nickname,register:EF.register,note:EF.note,tags:EF.tags,real_name:EF.real_name,phone:EF.phone,note_pos:EF.note_pos,note_neg:EF.note_neg});
+    await api("/api/contacts/"+encodeURIComponent(EF.code),"POST",{rank:EF.rank,nickname:EF.nickname,register:EF.register,note:EF.note,tags:EF.tags,real_name:EF.real_name,phone:EF.phone,note_pos:EF.note_pos,note_neg:EF.note_neg,stand:EF.stand,birthday:EF.birthday,kids_bday:EF.kids_bday,founding:EF.founding});
+    try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/kind","POST",{kind:EF.kind}); }catch(e){}
     for(var k in EF.attrs){ if(EF.attrs[k]!=="") await api("/api/contacts/"+encodeURIComponent(EF.code)+"/attrs","POST",{key:k,value:EF.attrs[k]}); }
     toast("保存しました");
     location.hash="card/"+encodeURIComponent(EF.code);

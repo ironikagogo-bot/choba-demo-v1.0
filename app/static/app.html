@@ -193,11 +193,9 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
     <iframe class="embed" src="/crm" title="顧客" loading="lazy"></iframe>
   </section>
 
-  <!-- 実績 -->
+  <!-- 実績（お席の記録→御礼→記念日を /seki に統合） -->
   <section class="view" id="view-events">
-    <div class="sec"><div class="bar"></div><span>実績</span><div class="rule"></div></div>
-    <div id="events"></div>
-    <div class="note">来店・同伴などの記録は返信操作から自動で残ります（手入力ゼロ）。移籍時に持ち出せる「検証済み実績書」の出力は次フェーズで追加予定です。</div>
+    <iframe class="embed" src="/seki" title="お席と実績" loading="lazy"></iframe>
   </section>
 
   <!-- 設定 -->
@@ -595,6 +593,7 @@ $('#addContactBtn')?.addEventListener('click', async () => {
 /* ---------- 実績 ---------- */
 const KIND_LABEL = { visit: '来店', dohan: '同伴', anniversary: '記念日' };
 async function loadEvents() {
+  if (!$('#events')) return;   // 実績は /seki iframe に統合済み
   let list;
   try { list = await api('/api/events'); } catch (e) { return; }
   $('#events').innerHTML = list.length ? list.map((e) => `

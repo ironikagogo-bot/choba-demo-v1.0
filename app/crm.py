@@ -51,7 +51,7 @@ def ensure():
     with db.conn() as c:
         c.executescript(_SCHEMA)
         # 顧客に呼び方(nickname)・距離感(register)列を後付け(既にあれば無視)
-        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''", "real_name TEXT DEFAULT ''", "phone TEXT DEFAULT ''", "note_pos TEXT DEFAULT ''", "note_neg TEXT DEFAULT ''", "linked INTEGER DEFAULT 1", "kind TEXT DEFAULT 'customer'"):
+        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''", "real_name TEXT DEFAULT ''", "phone TEXT DEFAULT ''", "note_pos TEXT DEFAULT ''", "note_neg TEXT DEFAULT ''", "linked INTEGER DEFAULT 1", "kind TEXT DEFAULT 'customer'", "stand TEXT DEFAULT ''", "kids_bday TEXT DEFAULT ''", "founding TEXT DEFAULT ''"):
             try:
                 c.execute(f"ALTER TABLE contacts ADD COLUMN {ddl}")
             except Exception:
@@ -252,7 +252,7 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
 
 
 # ---------- 顧客の基本項目更新(編集フォーム用) ----------
-_ALLOWED = {"rank", "nickname", "register", "note", "tags", "cycle_days", "real_name", "phone", "note_pos", "note_neg"}
+_ALLOWED = {"rank", "nickname", "register", "note", "tags", "cycle_days", "real_name", "phone", "note_pos", "note_neg", "stand", "kids_bday", "founding", "birthday"}
 
 def update_contact(code: str, fields: dict) -> dict:
     ensure()
@@ -316,3 +316,112 @@ def reset_demo():
         for t in ("contact_aliases", "muted_names", "pending_links", "contact_attrs"):
             c.execute(f"DELETE FROM {t}")
         c.execute("DELETE FROM contacts")
+
+
+
+# ---------- お席のメンバー候補 / 種別変更 / 移籍 ----------
+def list_roster(kinds: str = "staff,peer,excolleague") -> list:
+    """お席のメンバー候補を種別で絞って返す(店内staff/同業者peer/元同僚excolleague)。"""
+    ensure()
+    want = set(k.strip() for k in (kinds or "").split(",") if k.strip())
+    with db.conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM contacts ORDER BY kind, rank, code")]
+    return [r for r in rows if (r.get("kind") or "customer") in want]
+
+
+def set_kind(code: str, kind: str) -> dict:
+    """相手の種別を変更(customer/staff/peer/excolleague)。"""
+    ensure()
+    with db.conn() as c:
+        c.execute("UPDATE contacts SET kind=?, linked=1 WHERE code=?", (kind, code))
+    return {"ok": True, "code": code, "kind": kind}
+
+
+def mark_peer(code: str) -> dict:
+    return set_kind(code, "peer")
+
+
+def reclassify(from_kind: str, to_kind: str) -> dict:
+    """移籍など: ある種別を別種別へ一括付け替え(例: staff->excolleague)。非破壊。"""
+    ensure()
+    with db.conn() as c:
+        cur = c.execute("UPDATE contacts SET kind=? WHERE kind=?", (to_kind, from_kind))
+        n = cur.rowcount
+    return {"ok": True, "moved": n, "from_kind": from_kind, "to_kind": to_kind}
+
+
+# ---------- 記念日(命日は扱わない) ----------
+def _md(s: str):
+    s = (s or "").strip()
+    if not s:
+        return None
+    import re as _re
+    m = _re.match(r"^(\d{1,2})[-/](\d{1,2})$", s)
+    if not m:
+        return None
+    mm, dd = int(m.group(1)), int(m.group(2))
+    if 1 <= mm <= 12 and 1 <= dd <= 31:
+        return (mm, dd)
+    return None
+
+
+def _anniv_text(kind: str, name: str, who: str = "") -> str:
+    if kind == "self":
+        return f"{name}、お誕生日おめでとうございます！素敵な一年になりますように。またお会いできるのを楽しみにしています。"
+    if kind == "kid":
+        w = who or "お子様"
+        return f"{name}、{w}のお誕生日おめでとうございます！健やかなご成長を心よりお祈りしています。"
+    if kind == "founding":
+        return f"{name}、創立記念日おめでとうございます。益々のご発展を心よりお祈り申し上げます。"
+    return f"{name}、おめでとうございます。"
+
+
+def upcoming_anniversaries(within_days: int = 14, today=None) -> list:
+    """今後 within_days 日以内の記念日。本人誕生日/お子様誕生日/創立記念日のみ。命日は扱わない。
+    kids_bday は 'なまえ:MM-DD, なまえ:MM-DD' 形式。"""
+    ensure()
+    import datetime as _dt
+    base = today or _dt.date.today()
+    out = []
+    with db.conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM contacts")]
+
+    def emit(code, name, kind, label, mmdd, who=""):
+        md = _md(mmdd)
+        if not md:
+            return
+        mm, dd = md
+        cand = []
+        for y in (base.year, base.year + 1):
+            try:
+                d = _dt.date(y, mm, dd)
+            except ValueError:
+                d = _dt.date(y, mm, 28)
+            cand.append(d)
+        future = [d for d in cand if d >= base]
+        nxt = min(future) if future else min(cand)
+        days = (nxt - base).days
+        if 0 <= days <= within_days:
+            out.append({"code": code, "name": name, "kind": kind, "label": label,
+                        "date": f"{mm:02d}-{dd:02d}", "days": days,
+                        "draft": _anniv_text(kind, name, who)})
+
+    for r in rows:
+        if (r.get("kind") or "customer") not in ("customer", "peer"):
+            continue
+        code = r.get("code")
+        nm = (r.get("nickname") or "").strip() or code
+        emit(code, nm, "self", f"{nm} 様のお誕生日", r.get("birthday"))
+        emit(code, nm, "founding", f"{nm} 様の創立記念日", r.get("founding"))
+        for part in (r.get("kids_bday") or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            pp = part.replace("：", ":")
+            if ":" in pp:
+                who, _, dt = pp.partition(":")
+                emit(code, nm, "kid", f"{nm} 様の {who.strip()} のお誕生日", dt.strip(), who.strip())
+            else:
+                emit(code, nm, "kid", f"{nm} 様のお子様のお誕生日", part)
+    out.sort(key=lambda x: x["days"])
+    return out
