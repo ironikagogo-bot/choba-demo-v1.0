@@ -1,11 +1,7 @@
+# 帳場 クラウド実行の最小依存(すべてwheel配布=ソースビルド不要)。
+# Web Push(pywebpush/py-vapid)はslim版Python3.12でsetuptools不在によりビルド不可のため外す。
+# push.py は未インストールでも try/except で動作(AVAILABLE=False)。テスト専用のpytest/httpxも除外。
 fastapi>=0.110
 uvicorn>=0.29
 requests>=2.31
-pytest>=8.0
-httpx>=0.27
 python-multipart>=0.0.9
-# Web Push (フェーズ1: 通知基盤)
-# 注: Debian/Ubuntu 系では http-ece のビルドが setuptools 問題で失敗することがある。
-#     その場合: SETUPTOOLS_USE_DISTUTILS=stdlib pip install -r requirements.txt
-pywebpush>=2.0
-py-vapid>=1.9
