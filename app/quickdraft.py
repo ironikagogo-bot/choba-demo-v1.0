@@ -47,6 +47,12 @@ def draft_from_text(text: str, contact_code: str | None = None,
         parts.append(rule)
     if nickname:
         parts.append(f"呼び方は「{nickname}」を使う(不自然にならない範囲で)。")
+    _pos = (contact.get("note_pos") or "").strip()
+    _neg = (contact.get("note_neg") or "").strip()
+    if _pos:
+        parts.append(f"この相手が喜ぶ・強み(自然に活かす): {_pos}")
+    if _neg:
+        parts.append(f"この相手の地雷・注意(触れず避ける。本文にこの語句を絶対書かない): {_neg}")
     parts.append(
         f"相手: {contact.get('code','') or '不明'}(ランク{contact.get('rank','B')})\n"
         f"受信区分: {reason}\n"

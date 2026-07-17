@@ -34,6 +34,8 @@ DEMO_SCRIPT = [
     (52, "K.専務", "今度その人を連れて行くよ、面白い人だから"),
     (70, "Y.社長", "出張から戻りました"),
     (85, "M.先生", "同伴の件、木曜あたりでどうかな"),
+    (30, "たけし", "明日って空いてる？久しぶりに行きたい"),   # 未登録(仕事型)
+    (60, "ミカ", "今度ごはん行こー！みんなで集まらない？"),  # 未登録(私用型)
 ]
 
 
@@ -47,9 +49,29 @@ def ingest(contact: str, text: str, log=None, predraft: bool = False):
     戻り値: (message_id, category, reason)
     """
     log = log or (lambda m: None)
+    _unknown = False
+    try:
+        from . import crm
+        _res = crm.resolve_incoming(contact)
+        if _res["action"] == "muted":
+            log(f"私用として除外: {contact}")
+            return None, "muted", "muted"
+        if _res["action"] == "unknown":
+            _unknown = True
+            crm.record_pending(contact, text)
+        elif _res.get("contact"):
+            contact = _res["contact"]
+    except Exception as _e:
+        log(f"CRM解決スキップ: {_e}")
     if not db.get_contact(contact):
         db.upsert_contact(contact, "B")
-        log(f"未知の相手を仮登録: {contact}(ランクB)")
+        log(f"未登録の相手: {contact}(ランクB)")
+    if _unknown:
+        try:
+            from . import crm as _crm
+            _crm.mark_unlinked(contact)
+        except Exception:
+            pass
 
     preview = text if len(text) <= 18 else text[:18] + "…"
     log(f"受信検知: {contact}「{preview}」")
@@ -58,7 +80,7 @@ def ingest(contact: str, text: str, log=None, predraft: bool = False):
     mid = db.add_message(contact, text, cat, reason)
     log(f"判定: {CAT_LABEL[cat]} — {reason}")
 
-    if cat == "urgent":
+    if cat == "urgent" and not _unknown:
         title = f"帳場｜即対応 — {contact}"
         if predraft:
             def work():
@@ -194,25 +216,10 @@ class DeskService:
                 self.log(f"→ 重複のためスキップ: {contact}(同一通知の再掲)")
                 return {"status": "duplicate", "contact": contact}
 
-            # CRM: 送信者を解決(私用は破棄・未知はトレイへ隔離・エイリアスは本来の顧客へ)。
-            # crm層で失敗しても取り込みは止めない(従来動作にフォールバック)。
-            try:
-                from . import crm
-                _res = crm.resolve_incoming(contact)
-                if _res["action"] == "muted":
-                    self.log(f"→ 私用として除外: {contact}")
-                    return {"status": "muted", "contact": contact}
-                if _res["action"] == "unknown":
-                    crm.record_pending(contact, message)
-                    self.log(f"→ 未紐付けトレイへ隔離: {contact}")
-                    return {"status": "pending", "contact": contact}
-                if _res.get("contact"):
-                    contact = _res["contact"]
-            except Exception as _e:
-                self.log(f"CRM解決スキップ(従来動作): {_e}")
-
             self.android_count += 1
             mid, cat, reason = ingest(contact, message, log=self.log, predraft=True)
+            if mid is None:
+                return {"status": "muted", "contact": contact}
             return {"status": "ingested", "contact": contact, "message": message,
                     "category": cat, "reason": reason, "id": mid}
 

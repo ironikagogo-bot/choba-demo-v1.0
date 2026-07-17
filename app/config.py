@@ -26,6 +26,10 @@ _load_dotenv()
 DB_PATH = os.environ.get("CHOUBA_DB", os.path.join(os.path.dirname(__file__), "..", "chouba.db"))
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.environ.get("CHOUBA_MODEL", "claude-sonnet-5")
+# トリアージAI用モデル(既定は本体と同じ=すぐ動く。安価な高速モデルを環境変数で指定するとコスト減)
+TRIAGE_MODEL = os.environ.get("CHOUBA_TRIAGE_MODEL", ANTHROPIC_MODEL)
+# 曖昧な受信のみAIで再判定(1=有効・既定)。失敗時は必ずキーワード判定へフォールバック
+TRIAGE_AI = os.environ.get("CHOUBA_TRIAGE_AI", "1") == "1"
 # ラリー判定: 同一相手からこの分数以内の連続受信でラリー扱い
 RALLY_WINDOW_MIN = int(os.environ.get("CHOUBA_RALLY_WINDOW_MIN", "10"))
 # まとめ返信の既定時刻(表示用)

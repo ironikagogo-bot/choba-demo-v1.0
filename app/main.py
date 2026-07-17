@@ -175,6 +175,9 @@ def inbox():
     msgs = db.open_messages()
     out = {"urgent": [], "rally": {}, "batch": [], "batch_time": config.BATCH_TIME}
     for m in msgs:
+        _c = db.get_contact(m["contact"]) or {}
+        m["rank"] = _c.get("rank", "B")
+        m["unlinked"] = 1 if (_c.get("linked") == 0) else 0
         if m["category"] == "urgent":
             out["urgent"].append(m)
         elif m["category"] == "rally":
@@ -618,6 +621,10 @@ class ContactUpdate(BaseModel):
     note: str | None = None
     tags: str | None = None
     cycle_days: int | None = None
+    real_name: str | None = None
+    phone: str | None = None
+    note_pos: str | None = None
+    note_neg: str | None = None
 
 @app.post("/api/contacts/{code}")
 def contact_update(code: str, body: ContactUpdate):
@@ -632,3 +639,25 @@ def contact_update(code: str, body: ContactUpdate):
 def crm_page():
     """顧客管理(3層＋未紐付けトレイ＋属性)の実ページ。"""
     return FileResponse(os.path.join(STATIC_DIR, "crm.html"))
+
+
+class InboxClassify(BaseModel):
+    contact: str
+    action: str   # work(顧客に登録) / private(私用除外)
+
+@app.post("/api/inbox/classify")
+def inbox_classify(body: InboxClassify):
+    """受信箱の未登録カードの仕分け。work=登録(linked化・別名付け)/private=除外(mute+受信削除)。"""
+    from . import crm
+    name = (body.contact or "").strip()
+    if not name:
+        raise HTTPException(400, "contact required")
+    if body.action == "work":
+        crm.link_contact(name)
+        crm.add_alias(name, name)
+        return {"ok": True, "contact": name}
+    if body.action == "private":
+        crm.mute(name)
+        crm.discard_unlinked(name)
+        return {"ok": True}
+    raise HTTPException(400, "bad action")

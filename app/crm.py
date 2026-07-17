@@ -51,7 +51,7 @@ def ensure():
     with db.conn() as c:
         c.executescript(_SCHEMA)
         # 顧客に呼び方(nickname)・距離感(register)列を後付け(既にあれば無視)
-        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''"):
+        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''", "real_name TEXT DEFAULT ''", "phone TEXT DEFAULT ''", "note_pos TEXT DEFAULT ''", "note_neg TEXT DEFAULT ''", "linked INTEGER DEFAULT 1"):
             try:
                 c.execute(f"ALTER TABLE contacts ADD COLUMN {ddl}")
             except Exception:
@@ -122,11 +122,13 @@ def resolve_pending(line_name: str, action: str, contact: str = None,
         if not contact:
             return {"ok": False, "error": "contact required for link"}
         add_alias(name, contact)
+        link_contact(contact)
         target = contact
     elif action == "new":
         code = (contact or name).strip()
         db.upsert_contact(code, rank)
         add_alias(name, code)
+        link_contact(code)
         target = code
     else:
         return {"ok": False, "error": "bad action"}
@@ -249,7 +251,7 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
 
 
 # ---------- 顧客の基本項目更新(編集フォーム用) ----------
-_ALLOWED = {"rank", "nickname", "register", "note", "tags", "cycle_days"}
+_ALLOWED = {"rank", "nickname", "register", "note", "tags", "cycle_days", "real_name", "phone", "note_pos", "note_neg"}
 
 def update_contact(code: str, fields: dict) -> dict:
     ensure()
@@ -264,3 +266,36 @@ def update_contact(code: str, fields: dict) -> dict:
         with db.conn() as c:
             c.execute(f"UPDATE contacts SET {', '.join(sets)} WHERE code=?", vals)
     return {"ok": True}
+
+
+# ---------- 未登録(unlinked)管理: 受信箱に出す/仕分ける ----------
+def mark_unlinked(code: str):
+    ensure()
+    with db.conn() as c:
+        c.execute("UPDATE contacts SET linked=0 WHERE code=?", (code,))
+
+def link_contact(code: str):
+    ensure()
+    with db.conn() as c:
+        c.execute("UPDATE contacts SET linked=1 WHERE code=?", (code,))
+
+def is_linked(code: str) -> bool:
+    ensure()
+    with db.conn() as c:
+        r = c.execute("SELECT linked FROM contacts WHERE code=?", (code,)).fetchone()
+    if not r or r["linked"] is None:
+        return True
+    return int(r["linked"]) == 1
+
+def discard_unlinked(code: str):
+    """私用に仕分けた仮登録相手を、受信ごと消す(顧客・メッセージ・下書き等)。"""
+    ensure()
+    with db.conn() as c:
+        ids = [row["id"] for row in c.execute("SELECT id FROM messages WHERE contact=?", (code,))]
+        for mid in ids:
+            c.execute("DELETE FROM drafts WHERE message_id=?", (mid,))
+        c.execute("DELETE FROM messages WHERE contact=?", (code,))
+        c.execute("DELETE FROM events WHERE contact=?", (code,))
+        c.execute("DELETE FROM contact_attrs WHERE contact=?", (code,))
+        c.execute("DELETE FROM contact_aliases WHERE contact=?", (code,))
+        c.execute("DELETE FROM contacts WHERE code=?", (code,))

@@ -165,6 +165,8 @@ async function viewCard(code){
   var visitRows=events.slice(0,6).map(function(e){return '<div class="frow"><span class="fl">'+esc(e.label||e.kind)+'</span><span class="fv" style="color:#8a8f98;font-weight:500">'+(e.status==="confirmed"?"確定":"仮")+'・自動</span></div>'}).join("")||'<div class="memo" style="color:#9aa1aa">まだ記録なし（返信すると自動で貯まる）</div>';
   app.innerHTML=header("顧客カード")
     +'<div class="hd" style="position:static;border-top:none"><div class="t" style="font-size:20px">'+esc(d.code)+' <span class="rk '+esc(d.rank)+'" style="display:inline-flex">'+esc(d.rank)+'</span></div><button class="b" onclick="go(\'edit/'+encodeURIComponent(code)+'\')">編集</button></div>'
+    +'<div class="frow"><span class="fl">本名</span><span class="fv">'+esc(d.real_name||"—")+'</span></div>'
+    +'<div class="frow"><span class="fl">電話番号</span><span class="fv">'+esc(d.phone||"—")+'</span></div>'
     +'<div class="frow"><span class="fl">呼び方</span><span class="fv">'+esc(d.nickname||"—")+'</span></div>'
     +'<div class="frow"><span class="fl">距離感</span><span class="fv"'+(d.register==="keigo_only"?' style="color:#C0402C"':'')+'>'+esc(regLabel(d.register))+'</span></div>'
     +'<div class="frow"><span class="fl">タグ</span><span class="fv">'+esc(d.tags||"—")+'</span></div>'
@@ -172,7 +174,9 @@ async function viewCard(code){
     +((d.aliases&&d.aliases.length)?d.aliases.map(function(a){return '<div class="frow"><span class="fv" style="text-align:left;width:100%">'+esc(a)+'</span></div>'}).join(""):'<div class="memo" style="color:#9aa1aa">未紐付け</div>')
     +(attrRows?'<div class="sec">ユーザー定義属性</div>'+attrRows:'')
     +'<div class="sec">来店・同伴（返信操作から自動記録）</div>'+visitRows
-    +'<div class="sec">自由メモ</div><div class="memo">'+esc(d.note||"—")+'</div><div style="height:24px"></div>';
+    +'<div class="sec" style="color:#5E8A5D">＋ ポジティブ（喜ぶ・強み→活かす）</div><div class="memo" style="background:#EEF4EC;border-top:1px solid #C4D8C0;border-bottom:1px solid #C4D8C0;color:#3f6b3d">'+esc(d.note_pos||"—")+'</div>'
+    +'<div class="sec" style="color:#C0402C">－ ネガティブ（地雷・注意→避ける／本文には出しません）</div><div class="memo" style="background:#FBEDEA;border-top:1px solid #E7C4BC;border-bottom:1px solid #E7C4BC;color:#8a2f22">'+esc(d.note_neg||"—")+'</div>'
+    +'<div class="sec">自由メモ（中立）</div><div class="memo">'+esc(d.note||"—")+'</div><div style="height:24px"></div>';
 }
 
 /* ---------- EDIT / NEW ---------- */
@@ -181,8 +185,8 @@ async function viewEdit(code){
   var app=document.getElementById("app");
   var isNew=!code;
   if(!DEFS.length){try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){}}
-  if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",aliases:[],attrs:{}}; }
-  else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
+  if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",real_name:"",phone:"",note_pos:"",note_neg:"",aliases:[],attrs:{}}; }
+  else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",real_name:d.real_name||"",phone:d.phone||"",note_pos:d.note_pos||"",note_neg:d.note_neg||"",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
   var regSeg=REG.map(function(r){return '<span class="'+(EF.register===r[0]?"on"+(r[0]==="keigo_only"?" red":""):"")+'" onclick="EF.register=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var rankSeg=["S","A","B"].map(function(r){return '<span class="'+(EF.rank===r?"on"+(r==="S"?" red":""):"")+'" onclick="EF.rank=\''+r+'\';renderEdit()">'+r+'</span>'}).join("");
   var aliasList=EF.aliases.map(function(a){return '<div class="aliasrow">🔗 '+esc(a)+'</div>'}).join("");
@@ -196,17 +200,25 @@ async function viewEdit(code){
     return '<div class="fi"><label style="color:#6b4bd6">'+esc(df.key)+'</label>'+inp+'</div>';
   }).join("");
   app.innerHTML=header(isNew?"新規顧客":"顧客を編集")
-    +'<div class="glabel">基本</div><div class="fg">'
-    +'<div class="fi"><label>名前(コード)</label><input id="ef_code" value="'+esc(EF.code)+'" '+(isNew?'placeholder="例: 健さん / T.会長"':'readonly style="color:#999"')+'></div>'
+    +'<div class="glabel">名前・連絡先</div><div class="fg">'
+    +'<div class="fi"><label>名前(識別名)</label><input id="ef_code" value="'+esc(EF.code)+'" '+(isNew?'placeholder="例: 健さん / T.会長"':'readonly style="color:#999"')+'></div>'
+    +'<div class="fi"><label>本名</label><input id="ef_real" value="'+esc(EF.real_name)+'" placeholder="例: 山田 健"></div>'
+    +'<div class="fi"><label>電話番号</label><input id="ef_phone" value="'+esc(EF.phone)+'" placeholder="例: 090-1234-5678" inputmode="tel"></div>'
+    +'</div>'
+    +'<div class="glabel">属性</div><div class="fg">'
     +'<div class="fi"><label>ランク</label><div class="seg">'+rankSeg+'</div></div>'
     +'<div class="fi"><label>呼び方</label><input id="ef_nick" value="'+esc(EF.nickname)+'" placeholder="例: あき"></div>'
     +'<div class="fi"><label>距離感</label><div class="seg">'+regSeg+'</div></div>'
     +'<div class="fi"><label>タグ</label><input id="ef_tags" value="'+esc(EF.tags)+'" placeholder="VIP,常連 (カンマ区切り)"></div>'
     +'</div>'
-    +(isNew?'':'<div class="glabel">🔗 LINE紐付け</div><div class="fg">'+(aliasList||'<div class="aliasrow" style="color:#9aa1aa">未紐付け</div>')
+    +(isNew?'':'<div class="glabel">🔗 LINE紐付け</div>'
+      +'<div style="font-size:11px;color:#8D8674;line-height:1.7;margin:0 16px 4px">LINEの表示名をこの顧客に結びつけると、次からその名前で来た受信が自動でこのカードに入ります（表示名が変わった時だけ結び直す）。</div>'
+      +'<div class="fg">'+(aliasList||'<div class="aliasrow" style="color:#9aa1aa">未紐付け</div>')
       +'<div class="fi"><input id="ef_alias" placeholder="LINE表示名を追加"><button class="btn mini" onclick="addAlias()">追加</button></div></div>')
     +(attrItems?'<div class="glabel">ユーザー定義属性</div><div class="fg">'+attrItems+'</div>':'')
-    +'<div class="glabel">自由メモ（検索対象外）</div><div class="fg"><div class="fi"><textarea id="ef_note" placeholder="好み・注意点など">'+esc(EF.note)+'</textarea></div></div>'
+    +'<div class="glabel" style="color:#5E8A5D">＋ ポジティブ（喜ぶ・強み→下書きで活かす）</div><div class="fg"><div class="fi"><textarea id="ef_pos" placeholder="例: 酒癖よし、日本酒好き、聞き上手">'+esc(EF.note_pos)+'</textarea></div></div>'
+    +'<div class="glabel" style="color:#C0402C">－ ネガティブ（地雷・注意→避ける／本文には絶対出しません）</div><div class="fg"><div class="fi"><textarea id="ef_neg" placeholder="例: ケチ、恐妻家">'+esc(EF.note_neg)+'</textarea></div></div>'
+    +'<div class="glabel">自由メモ（中立・検索対象外）</div><div class="fg"><div class="fi"><textarea id="ef_note" placeholder="好み・雑記">'+esc(EF.note)+'</textarea></div></div>'
     +'<div class="btnrow"><button class="btn ghost" onclick="history.back()">キャンセル</button><button class="btn primary" onclick="saveEdit('+(isNew?"true":"false")+')">保存</button></div>';
 }
 function renderEdit(){ // 再描画(seg更新)。入力値は保持
@@ -218,6 +230,10 @@ function syncEF(){
   if(g("ef_nick")!==undefined)EF.nickname=g("ef_nick");
   if(g("ef_tags")!==undefined)EF.tags=g("ef_tags");
   if(g("ef_note")!==undefined)EF.note=g("ef_note");
+  if(g("ef_real")!==undefined)EF.real_name=g("ef_real");
+  if(g("ef_phone")!==undefined)EF.phone=g("ef_phone");
+  if(g("ef_pos")!==undefined)EF.note_pos=g("ef_pos");
+  if(g("ef_neg")!==undefined)EF.note_neg=g("ef_neg");
 }
 async function addAlias(){
   syncEF();
@@ -232,7 +248,7 @@ async function saveEdit(isNew){
   if(!EF.code){toast("名前を入れてください");return;}
   try{
     if(isNew){ await api("/api/contacts","POST",{code:EF.code,rank:EF.rank,tags:EF.tags,note:EF.note}); }
-    await api("/api/contacts/"+encodeURIComponent(EF.code),"POST",{rank:EF.rank,nickname:EF.nickname,register:EF.register,note:EF.note,tags:EF.tags});
+    await api("/api/contacts/"+encodeURIComponent(EF.code),"POST",{rank:EF.rank,nickname:EF.nickname,register:EF.register,note:EF.note,tags:EF.tags,real_name:EF.real_name,phone:EF.phone,note_pos:EF.note_pos,note_neg:EF.note_neg});
     for(var k in EF.attrs){ if(EF.attrs[k]!=="") await api("/api/contacts/"+encodeURIComponent(EF.code)+"/attrs","POST",{key:k,value:EF.attrs[k]}); }
     toast("保存しました");
     location.hash="card/"+encodeURIComponent(EF.code);
