@@ -194,6 +194,23 @@ class DeskService:
                 self.log(f"→ 重複のためスキップ: {contact}(同一通知の再掲)")
                 return {"status": "duplicate", "contact": contact}
 
+            # CRM: 送信者を解決(私用は破棄・未知はトレイへ隔離・エイリアスは本来の顧客へ)。
+            # crm層で失敗しても取り込みは止めない(従来動作にフォールバック)。
+            try:
+                from . import crm
+                _res = crm.resolve_incoming(contact)
+                if _res["action"] == "muted":
+                    self.log(f"→ 私用として除外: {contact}")
+                    return {"status": "muted", "contact": contact}
+                if _res["action"] == "unknown":
+                    crm.record_pending(contact, message)
+                    self.log(f"→ 未紐付けトレイへ隔離: {contact}")
+                    return {"status": "pending", "contact": contact}
+                if _res.get("contact"):
+                    contact = _res["contact"]
+            except Exception as _e:
+                self.log(f"CRM解決スキップ(従来動作): {_e}")
+
             self.android_count += 1
             mid, cat, reason = ingest(contact, message, log=self.log, predraft=True)
             return {"status": "ingested", "contact": contact, "message": message,

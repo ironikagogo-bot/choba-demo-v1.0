@@ -1,6 +1,4 @@
-# 帳場 クラウド実行の最小依存(すべてwheel配布=ソースビルド不要)。
-# Web Push(pywebpush/py-vapid)はslim版Python3.12でsetuptools不在によりビルド不可のため外す。
-# push.py は未インストールでも try/except で動作(AVAILABLE=False)。テスト専用のpytest/httpxも除外。
+# 帳場 クラウド最小依存(wheelのみ・ソースビルド不要)。pywebpush/py-vapid/pytest/httpxは除外。
 fastapi>=0.110
 uvicorn>=0.29
 requests>=2.31

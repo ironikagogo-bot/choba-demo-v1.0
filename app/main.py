@@ -205,9 +205,13 @@ def act(mid: int, body: Action):
     if body.action not in ("replied", "stamped", "deferred", "skipped"):
         raise HTTPException(400, "bad action")
     db.set_status(mid, body.action)
-    # 来店系の即対応に返信したら仮予約として自動記録(入力ゼロ原則)
-    if body.action == "replied" and "来店" in msg["reason"]:
-        db.add_event(msg["contact"], "visit", f"{msg['contact']} 来店(仮)", "tentative")
+    # 返信したら実績を自動記録(入力ゼロ原則): 来店系→visit、同伴系→dohan
+    if body.action == "replied":
+        _r = msg["reason"] or ""
+        if ("来店" in _r) or ("席" in _r):
+            db.add_event(msg["contact"], "visit", f"{msg['contact']} 来店(仮)", "tentative")
+        elif ("同伴" in _r) or ("アフター" in _r):
+            db.add_event(msg["contact"], "dohan", f"{msg['contact']} 同伴(仮)", "tentative")
     return {"ok": True}
 
 
@@ -504,3 +508,104 @@ def quickdraft(body: QuickDraftIn):
         "primary": drafts[0]["text"] if drafts else "",
         "count": len(drafts),
     }
+
+
+@app.get("/quick")
+def quick_page():
+    """クイック下書き(相手本文→下書き。ショートカット不要の簡易ページ)。"""
+    return FileResponse(os.path.join(STATIC_DIR, "quick.html"))
+
+
+# ========== CRM: 未紐付けトレイ / エイリアス / カスタム属性 ==========
+class TrayResolve(BaseModel):
+    line_name: str
+    action: str                 # link / new / private
+    contact: str | None = None  # link時=既存code / new時=新規code(空なら表示名を使う)
+    rank: str = "B"
+
+class AliasIn(BaseModel):
+    line_name: str
+
+class AttrDefIn(BaseModel):
+    key: str
+    type: str = "text"          # choice / text / number / date
+    options: str = ""
+
+class AttrValIn(BaseModel):
+    key: str
+    value: str = ""
+
+class UnmuteIn(BaseModel):
+    line_name: str
+
+
+@app.get("/api/tray")
+def tray_list():
+    from . import crm
+    return {"pending": crm.list_pending(), "muted": crm.list_muted()}
+
+
+@app.post("/api/tray/resolve")
+def tray_resolve(body: TrayResolve):
+    from . import crm
+    if body.action not in ("link", "new", "private"):
+        raise HTTPException(400, "bad action")
+    res = crm.resolve_pending(body.line_name, body.action, body.contact, body.rank)
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "resolve failed"))
+    return res
+
+
+@app.post("/api/tray/unmute")
+def tray_unmute(body: UnmuteIn):
+    from . import crm
+    crm.unmute(body.line_name)
+    return {"ok": True}
+
+
+@app.get("/api/contacts/{code}/detail")
+def contact_detail(code: str):
+    from . import crm
+    d = crm.contact_detail(code)
+    if not d:
+        raise HTTPException(404)
+    return d
+
+
+@app.post("/api/contacts/{code}/alias")
+def contact_add_alias(code: str, body: AliasIn):
+    from . import crm
+    if not db.get_contact(code):
+        raise HTTPException(404, "contact not found")
+    crm.add_alias(body.line_name, code)
+    return {"ok": True, "aliases": crm.aliases_for(code)}
+
+
+@app.get("/api/attrs")
+def attrs_defs():
+    from . import crm
+    return {"defs": crm.list_defs()}
+
+
+@app.post("/api/attrs")
+def attrs_add(body: AttrDefIn):
+    from . import crm
+    res = crm.add_def(body.key, body.type, body.options)
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "bad def"))
+    return res
+
+
+@app.post("/api/contacts/{code}/attrs")
+def contact_set_attr(code: str, body: AttrValIn):
+    from . import crm
+    if not db.get_contact(code):
+        raise HTTPException(404, "contact not found")
+    crm.set_attr(code, body.key, body.value)
+    return {"ok": True, "attrs": crm.get_attrs(code)}
+
+
+@app.get("/api/contacts/search")
+def contacts_search(q: str = "", attr_key: str = "", attr_val: str = ""):
+    from . import crm
+    return {"contacts": crm.search_contacts(q, attr_key, attr_val)}

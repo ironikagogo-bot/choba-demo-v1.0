@@ -1,0 +1,248 @@
+"""顧客CRM拡張: LINE表示名の紐付け(エイリアス)、私用アカウント除外、
+未紐付けトレイ、ユーザー定義のカスタム属性。既存 db.py を壊さず追加する層。
+
+- contact_aliases: LINE表示名 → 顧客code (多対一)
+- muted_names:     私用として取り込まない表示名
+- pending_links:   未知の表示名(未紐付けトレイに隔離)
+- attr_defs:       ユーザー定義属性の定義(型: choice/text/number/date)
+- contact_attrs:   顧客ごとの属性値
+"""
+import time
+
+from . import db
+
+_READY = False
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS contact_aliases(
+  line_name TEXT PRIMARY KEY,
+  contact   TEXT NOT NULL,
+  created_ts REAL
+);
+CREATE TABLE IF NOT EXISTS muted_names(
+  line_name TEXT PRIMARY KEY,
+  created_ts REAL
+);
+CREATE TABLE IF NOT EXISTS pending_links(
+  line_name TEXT PRIMARY KEY,
+  last_text TEXT DEFAULT '',
+  last_ts   REAL,
+  count     INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS attr_defs(
+  key       TEXT PRIMARY KEY,
+  atype     TEXT NOT NULL DEFAULT 'text',   -- choice / text / number / date
+  options   TEXT NOT NULL DEFAULT '',       -- choice型の選択肢(カンマ区切り)
+  created_ts REAL
+);
+CREATE TABLE IF NOT EXISTS contact_attrs(
+  contact TEXT NOT NULL,
+  akey    TEXT NOT NULL,
+  value   TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(contact, akey)
+);
+"""
+
+
+def ensure():
+    global _READY
+    if _READY:
+        return
+    with db.conn() as c:
+        c.executescript(_SCHEMA)
+        # 顧客に呼び方(nickname)・距離感(register)列を後付け(既にあれば無視)
+        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''"):
+            try:
+                c.execute(f"ALTER TABLE contacts ADD COLUMN {ddl}")
+            except Exception:
+                pass
+    _READY = True
+
+
+# ---------- 受信の解決(取り込み経路から呼ぶ) ----------
+def resolve_incoming(display_name: str) -> dict:
+    """LINE表示名 → {action, contact}。
+      action: 'muted'(破棄) / 'known'(取り込む・contactに解決) / 'unknown'(トレイへ)
+    """
+    ensure()
+    name = (display_name or "").strip()
+    if not name:
+        return {"action": "unknown", "contact": None}
+    with db.conn() as c:
+        if c.execute("SELECT 1 FROM muted_names WHERE line_name=?", (name,)).fetchone():
+            return {"action": "muted", "contact": None}
+        r = c.execute("SELECT contact FROM contact_aliases WHERE line_name=?", (name,)).fetchone()
+        if r:
+            return {"action": "known", "contact": r["contact"]}
+    # エイリアス未登録でも、表示名がそのまま既存顧客codeなら既知扱い
+    if db.get_contact(name):
+        return {"action": "known", "contact": name}
+    return {"action": "unknown", "contact": None}
+
+
+def record_pending(display_name: str, text: str = "", ts: float = None):
+    ensure()
+    name = (display_name or "").strip()
+    if not name:
+        return
+    ts = ts or time.time()
+    with db.conn() as c:
+        c.execute(
+            "INSERT INTO pending_links(line_name,last_text,last_ts,count) VALUES(?,?,?,1) "
+            "ON CONFLICT(line_name) DO UPDATE SET last_text=excluded.last_text, "
+            "last_ts=excluded.last_ts, count=count+1",
+            (name, text, ts),
+        )
+
+
+def list_pending() -> list:
+    ensure()
+    with db.conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM pending_links ORDER BY last_ts DESC")]
+
+
+def resolve_pending(line_name: str, action: str, contact: str = None,
+                    rank: str = "B") -> dict:
+    """未紐付けトレイの1件を仕分ける。
+      action: 'link'(既存客に紐付け) / 'new'(新規客) / 'private'(私用=除外)
+    戻り値に、取りこぼし防止用の last_text/contact を含める。
+    """
+    ensure()
+    name = (line_name or "").strip()
+    if not name:
+        return {"ok": False, "error": "empty name"}
+    with db.conn() as c:
+        row = c.execute("SELECT last_text FROM pending_links WHERE line_name=?", (name,)).fetchone()
+        last_text = row["last_text"] if row else ""
+    target = None
+    if action == "private":
+        mute(name)
+    elif action == "link":
+        if not contact:
+            return {"ok": False, "error": "contact required for link"}
+        add_alias(name, contact)
+        target = contact
+    elif action == "new":
+        code = (contact or name).strip()
+        db.upsert_contact(code, rank)
+        add_alias(name, code)
+        target = code
+    else:
+        return {"ok": False, "error": "bad action"}
+    with db.conn() as c:
+        c.execute("DELETE FROM pending_links WHERE line_name=?", (name,))
+    return {"ok": True, "action": action, "contact": target, "last_text": last_text}
+
+
+# ---------- エイリアス / ミュート ----------
+def add_alias(line_name: str, contact: str):
+    ensure()
+    with db.conn() as c:
+        c.execute(
+            "INSERT INTO contact_aliases(line_name,contact,created_ts) VALUES(?,?,?) "
+            "ON CONFLICT(line_name) DO UPDATE SET contact=excluded.contact",
+            ((line_name or "").strip(), contact, time.time()),
+        )
+
+
+def aliases_for(contact: str) -> list:
+    ensure()
+    with db.conn() as c:
+        return [r["line_name"] for r in c.execute(
+            "SELECT line_name FROM contact_aliases WHERE contact=?", (contact,))]
+
+
+def mute(line_name: str):
+    ensure()
+    name = (line_name or "").strip()
+    with db.conn() as c:
+        c.execute("INSERT OR IGNORE INTO muted_names(line_name,created_ts) VALUES(?,?)",
+                  (name, time.time()))
+        c.execute("DELETE FROM pending_links WHERE line_name=?", (name,))
+
+
+def unmute(line_name: str):
+    ensure()
+    with db.conn() as c:
+        c.execute("DELETE FROM muted_names WHERE line_name=?", ((line_name or "").strip(),))
+
+
+def list_muted() -> list:
+    ensure()
+    with db.conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM muted_names ORDER BY created_ts DESC")]
+
+
+# ---------- カスタム属性 ----------
+def list_defs() -> list:
+    ensure()
+    with db.conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM attr_defs ORDER BY created_ts")]
+
+
+def add_def(key: str, atype: str = "text", options: str = "") -> dict:
+    ensure()
+    key = (key or "").strip()
+    if not key:
+        return {"ok": False, "error": "empty key"}
+    if atype not in ("choice", "text", "number", "date"):
+        atype = "text"
+    with db.conn() as c:
+        c.execute(
+            "INSERT INTO attr_defs(key,atype,options,created_ts) VALUES(?,?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET atype=excluded.atype, options=excluded.options",
+            (key, atype, options, time.time()),
+        )
+    return {"ok": True, "key": key, "atype": atype}
+
+
+def set_attr(contact: str, key: str, value: str):
+    ensure()
+    with db.conn() as c:
+        c.execute(
+            "INSERT INTO contact_attrs(contact,akey,value) VALUES(?,?,?) "
+            "ON CONFLICT(contact,akey) DO UPDATE SET value=excluded.value",
+            (contact, (key or "").strip(), value),
+        )
+
+
+def get_attrs(contact: str) -> dict:
+    ensure()
+    with db.conn() as c:
+        return {r["akey"]: r["value"] for r in c.execute(
+            "SELECT akey,value FROM contact_attrs WHERE contact=?", (contact,))}
+
+
+def contact_detail(code: str) -> dict:
+    """顧客カード用: 基本情報＋エイリアス＋属性をまとめて返す。"""
+    ensure()
+    c = db.get_contact(code)
+    if not c:
+        return None
+    c["aliases"] = aliases_for(code)
+    c["attrs"] = get_attrs(code)
+    return c
+
+
+def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list:
+    """名前/メモ＋属性で顧客を検索。attr_key/attr_val 指定時はその属性値で絞る。"""
+    ensure()
+    q = (q or "").strip()
+    attr_key = (attr_key or "").strip()
+    attr_val = (attr_val or "").strip()
+    with db.conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM contacts ORDER BY rank, code")]
+        if attr_key:
+            keep = set(r["contact"] for r in c.execute(
+                "SELECT contact FROM contact_attrs WHERE akey=?" +
+                (" AND value=?" if attr_val else ""),
+                ((attr_key, attr_val) if attr_val else (attr_key,))))
+            rows = [x for x in rows if x["code"] in keep]
+    if q:
+        rows = [x for x in rows if q in (x.get("code") or "") or q in (x.get("note") or "")
+                or q in (x.get("tags") or "")]
+    # 属性も添える
+    for x in rows:
+        x["attrs"] = get_attrs(x["code"])
+    return rows
