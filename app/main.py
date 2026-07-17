@@ -475,3 +475,32 @@ def dev_ui():
 def simulation():
     """営業用シミュレーション(『ある休日の1日』ウォークスルー。自己完結・API不要)。"""
     return FileResponse(os.path.join(STATIC_DIR, "simulation.html"))
+
+
+# ---------- クイック下書き(テキスト→下書き / iOSショートカット用) ----------
+class QuickDraftIn(BaseModel):
+    text: str
+    contact: str | None = None
+    reason: str = "ラリー"
+    register: str | None = None      # keigo_only / keigo / mix / casual
+    nickname: str | None = None
+    token: str | None = None
+
+
+@app.post("/api/quickdraft")
+def quickdraft(body: QuickDraftIn):
+    """相手の本文テキストを受け取り、本人の文体で返信下書き2案を返す。
+    iOSショートカット(コピー→この入口へPOST→下書きをクリップボードへ)から叩く想定。
+    認証は android/notify と同じ INGEST_TOKEN(未設定なら認証なし)。"""
+    from .quickdraft import draft_from_text
+    if config.INGEST_TOKEN and str(body.token or "") != config.INGEST_TOKEN:
+        raise HTTPException(401, "bad token")
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "empty text")
+    drafts = draft_from_text(text, body.contact, body.reason, body.register, body.nickname)
+    return {
+        "drafts": drafts,
+        "primary": drafts[0]["text"] if drafts else "",
+        "count": len(drafts),
+    }
