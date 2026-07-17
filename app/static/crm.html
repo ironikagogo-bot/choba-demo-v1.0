@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>帳場｜顧客管理</title>
+<style>
+  :root{--blue:#007aff;--green:#0f9d58;--red:#d4380d;--purple:#6b4bd6;--ink:#1c1c1e;--sub:#6b7280;
+        --hair:#e6e6ea;--pg:#f2f2f7;--card:#fff;--chip:#eef1f5}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--pg);color:var(--ink);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.5}
+  .wrap{max-width:640px;margin:0 auto;min-height:100vh;background:var(--pg)}
+  .hd{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--hair);padding:11px 14px;display:flex;align-items:center;gap:8px}
+  .hd .t{font-size:17px;font-weight:800;flex:1}
+  .hd .b{font-size:13px;color:var(--blue);font-weight:700;background:none;border:none;padding:4px 6px}
+  .hd .b.badge{position:relative}
+  .hd .b .n{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:10px;font-weight:800;border-radius:999px;padding:0 5px}
+  .search{padding:9px 12px}
+  .search input{width:100%;background:#e9eaee;border:none;border-radius:9px;padding:9px 12px;font-size:15px}
+  .filt{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px}
+  .fp{font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px;background:#fff;border:1.4px solid var(--hair);color:var(--sub)}
+  .fp.on{background:#eaf3ff;border-color:var(--blue);color:var(--blue)}
+  .fp.attr{background:#f3f0fd;border-color:#c9bef2;color:var(--purple)}
+  .fp.attr.on{background:var(--purple);color:#fff;border-color:var(--purple)}
+  .row{display:flex;align-items:center;gap:11px;padding:11px 14px;background:#fff;border-bottom:1px solid var(--hair);cursor:pointer}
+  .ava{width:38px;height:38px;border-radius:50%;background:#dfe4ea;display:flex;align-items:center;justify-content:center;font-weight:800;color:#67707c;flex:0 0 auto}
+  .cmid{flex:1;min-width:0}
+  .cn{font-weight:700;display:flex;align-items:center;gap:6px}
+  .rk{font-size:10px;font-weight:800;color:#fff;width:19px;height:19px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .csub{font-size:11.5px;color:var(--sub);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chp{font-size:9.5px;font-weight:700;padding:1.5px 7px;border-radius:999px;background:var(--chip);color:#5a6675}
+  .chp.red{background:#fdeaea;color:#c4381a}.chp.pur{background:#f3f0fd;color:#6b4bd6}
+  .linetag{font-size:9.5px;color:#06a24a;font-weight:700}
+  .empty{padding:40px 20px;text-align:center;color:#9aa1aa;font-size:13.5px}
+  /* card */
+  .frow{padding:12px 16px;border-bottom:1px solid var(--hair);display:flex;justify-content:space-between;gap:10px;background:#fff}
+  .fl{font-size:12px;color:var(--sub)}
+  .fv{font-size:14px;font-weight:600;text-align:right}
+  .sec{font-size:11px;font-weight:800;color:var(--sub);padding:14px 16px 5px}
+  .memo{padding:12px 16px;background:#fff;font-size:13px;color:#444;line-height:1.6;white-space:pre-wrap}
+  /* form */
+  .fg{background:#fff;margin:10px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  .fi{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .fi:last-child{border-bottom:none}
+  .fi label{font-size:13px;color:#333;flex:0 0 auto}
+  .fi input,.fi select{font-size:15px;border:none;text-align:right;flex:1;background:none;color:var(--ink);min-width:0}
+  .fi textarea{width:100%;border:none;font-size:14px;min-height:60px;font-family:inherit}
+  .seg{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .seg span{font-size:12px;font-weight:700;padding:6px 10px;border-radius:8px;background:#eceef1;color:#5a6675;cursor:pointer}
+  .seg span.on{background:var(--blue);color:#fff}
+  .seg span.on.red{background:var(--red)}
+  .glabel{font-size:11px;font-weight:800;color:var(--sub);padding:12px 16px 2px}
+  .btnrow{padding:14px 16px 30px;display:flex;gap:9px}
+  .btn{flex:1;text-align:center;border-radius:11px;padding:13px;font-size:14.5px;font-weight:800;border:none}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.ghost{background:#eceef1;color:#333}
+  .btn.mini{flex:0 0 auto;font-size:12px;padding:7px 12px;border-radius:8px;background:#eef4ff;color:var(--blue);font-weight:700}
+  .aliasrow{padding:9px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:8px;font-size:13px;background:#fff}
+  .aliasrow .x{margin-left:auto;color:#c33;font-size:12px}
+  /* tray */
+  .trnote{font-size:12px;color:#8a6d1a;background:#fff8e6;border-bottom:1px solid #f0e3b8;padding:10px 14px;line-height:1.5}
+  .trcard{background:#fff;margin:10px 12px;border:1px solid var(--hair);border-radius:13px;padding:12px}
+  .trtop{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .trname{font-weight:800}
+  .trcnt{margin-left:auto;font-size:10.5px;color:#999}
+  .trmsg{font-size:12.5px;color:#333;background:#f6f7f9;border-radius:8px;padding:8px 10px}
+  .tract{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .tb{flex:1;min-width:88px;text-align:center;font-size:12px;font-weight:800;padding:9px 4px;border-radius:9px;border:1.5px solid;cursor:pointer}
+  .tb.link{border-color:#bcdcff;color:var(--blue);background:#f2f8ff}
+  .tb.new{border-color:#bfe3c8;color:var(--green);background:#f1fbf4}
+  .tb.priv{border-color:#e6c9c1;color:var(--red);background:#fdf3f0}
+  .picker{margin-top:8px;display:none}
+  .picker.show{display:block}
+  .picker select{width:100%;padding:9px;border-radius:8px;border:1px solid var(--hair);font-size:14px}
+  .mutedrow{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;justify-content:space-between;background:#fff;font-size:13px}
+  .mutedrow .u{color:var(--blue);font-weight:700}
+  /* attrs */
+  .defcard{background:#fff;margin:10px 12px;border-radius:12px;padding:12px 13px;border:1px solid var(--hair)}
+  .defcard .dh{font-weight:800;display:flex;align-items:center;gap:7px}
+  .typechips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .tc{font-size:12px;font-weight:700;padding:6px 11px;border-radius:8px;background:#f3f0fd;color:var(--purple);border:1.5px solid #d9cef7;cursor:pointer}
+  .tc.on{background:var(--purple);color:#fff;border-color:var(--purple)}
+  .opt{font-size:11px;background:var(--chip);border-radius:999px;padding:3px 9px;color:#444;display:inline-block;margin:3px 3px 0 0}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;font-size:13px;padding:10px 18px;border-radius:999px;z-index:100;opacity:0;transition:.2s}
+  .toast.show{opacity:1}
+  .err{margin:12px;background:#fdecea;border:1px solid #f0c0b8;color:#a3271a;border-radius:10px;padding:10px 12px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="empty">読み込み中…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+var rankColor={S:"#d4380d",A:"#c2410c",B:"#a16207"};
+var REG=[["keigo_only","敬語厳守"],["keigo","敬語"],["mix","混在"],["casual","タメ口OK"]];
+var regLabel=function(v){var f=REG.find(function(r){return r[0]===v});return f?f[1]:"未設定"};
+var DEFS=[];        // 属性定義キャッシュ
+var TRAYCOUNT=0;
+var $=function(s,el){return (el||document).querySelector(s)};
+function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},1600);}
+
+async function api(path, method, body){
+  var o={method:method||"GET",headers:{"content-type":"application/json"}};
+  if(body) o.body=JSON.stringify(body);
+  var r=await fetch(path,o);
+  if(!r.ok){var t=await r.text();throw new Error("["+r.status+"] "+t.slice(0,120));}
+  return r.json();
+}
+function esc(s){return (s==null?"":String(s)).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]})}
+
+/* ---------- LIST ---------- */
+var LST={q:"",rank:"",ak:"",av:""};
+async function viewList(){
+  var app=document.getElementById("app");
+  if(!DEFS.length){ try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){} }
+  try{ TRAYCOUNT=((await api("/api/tray")).pending||[]).length }catch(e){}
+  var qs="?q="+encodeURIComponent(LST.q)+(LST.ak?"&attr_key="+encodeURIComponent(LST.ak)+"&attr_val="+encodeURIComponent(LST.av):"");
+  var list=[];
+  try{ list=(await api("/api/contacts/search"+qs)).contacts||[] }catch(e){ app.innerHTML=header("顧客リスト")+'<div class="err">読み込み失敗: '+esc(e.message)+'</div>'; return; }
+  if(LST.rank) list=list.filter(function(c){return c.rank===LST.rank});
+  // 属性フィルタ用チップ(最初のchoice型属性の選択肢)
+  var choiceDef=DEFS.find(function(d){return d.atype==="choice"&&d.options});
+  var attrChips="";
+  if(choiceDef){ attrChips=choiceDef.options.split(",").map(function(o){o=o.trim();
+    return '<span class="fp attr'+(LST.ak===choiceDef.key&&LST.av===o?" on":"")+'" onclick="toggleAttr(\''+esc(choiceDef.key)+'\',\''+esc(o)+'\')">'+esc(choiceDef.key)+':'+esc(o)+'</span>'}).join(""); }
+  var rows=list.map(function(c){
+    var aliases=(c.aliases&&c.aliases.length)?c.aliases.join("・"):"";
+    var tags=(c.tags||"").split(",").filter(Boolean).slice(0,1).map(function(t){return '<span class="chp">'+esc(t)+'</span>'}).join("");
+    var sake=c.attrs&&LST.ak&&c.attrs[LST.ak]?'<span class="chp pur">'+esc(LST.ak)+':'+esc(c.attrs[LST.ak])+'</span>':'';
+    return '<div class="row" onclick="go(\'card/'+encodeURIComponent(c.code)+'\')">'
+      +'<div class="ava">'+esc((c.code||"?")[0])+'</div><div class="cmid">'
+      +'<div class="cn">'+esc(c.code)+' <span class="rk" style="background:'+(rankColor[c.rank]||"#888")+'">'+esc(c.rank)+'</span></div>'
+      +'<div class="csub">'+(c.register?esc(regLabel(c.register))+' / ':'')+(c.nickname?'呼び='+esc(c.nickname):'')+'</div>'
+      +(aliases?'<div class="linetag">🔗 '+esc(aliases)+'</div>':'<div class="linetag" style="color:#c99">🔗 未紐付け</div>')
+      +'</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">'+tags+sake+'</div></div>';
+  }).join("");
+  app.innerHTML=header("顧客リスト", true)
+    +'<div class="search"><input id="q" placeholder="🔍 名前・タグ・メモで検索" value="'+esc(LST.q)+'"></div>'
+    +'<div class="filt"><span class="fp'+(!LST.rank?" on":"")+'" onclick="setRank(\'\')">全員</span>'
+    +'<span class="fp'+(LST.rank==="S"?" on":"")+'" onclick="setRank(\'S\')">S</span>'
+    +'<span class="fp'+(LST.rank==="A"?" on":"")+'" onclick="setRank(\'A\')">A</span>'
+    +'<span class="fp'+(LST.rank==="B"?" on":"")+'" onclick="setRank(\'B\')">B</span>'+attrChips+'</div>'
+    +(rows||'<div class="empty">該当なし。右上「＋」で追加。</div>');
+  var qi=document.getElementById("q");
+  var tmr;qi.oninput=function(){clearTimeout(tmr);tmr=setTimeout(function(){LST.q=qi.value;viewList()},350)};
+}
+function header(title, isList){
+  return '<div class="hd">'+(isList?'':'<button class="b" onclick="history.back()">‹ 戻る</button>')
+    +'<div class="t">'+esc(title)+'</div>'
+    +(isList?'<button class="b badge" onclick="go(\'tray\')">未紐付け'+(TRAYCOUNT?'<span class="n">'+TRAYCOUNT+'</span>':'')+'</button>'
+       +'<button class="b" onclick="go(\'attrs\')">属性</button><button class="b" onclick="go(\'new\')">＋ 新規</button>':'')+'</div>';
+}
+function setRank(r){LST.rank=r;viewList()}
+function toggleAttr(k,v){ if(LST.ak===k&&LST.av===v){LST.ak="";LST.av="";}else{LST.ak=k;LST.av=v;} viewList(); }
+
+/* ---------- CARD ---------- */
+async function viewCard(code){
+  var app=document.getElementById("app");
+  var d, events=[];
+  try{ d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail"); }
+  catch(e){ app.innerHTML=header("顧客カード")+'<div class="err">'+esc(e.message)+'</div>'; return; }
+  try{ events=(await api("/api/events")).filter?function(){}:[]; }catch(e){}
+  try{ var ev=await api("/api/events"); events=(ev.events||ev||[]).filter(function(x){return x.contact===code}); }catch(e){events=[]}
+  var attrRows=DEFS.map(function(df){var v=(d.attrs||{})[df.key];return v?'<div class="frow"><span class="fl" style="color:#6b4bd6">'+esc(df.key)+'</span><span class="fv">'+esc(v)+'</span></div>':''}).join("");
+  var visitRows=events.slice(0,6).map(function(e){return '<div class="frow"><span class="fl">'+esc(e.label||e.kind)+'</span><span class="fv" style="color:#8a8f98;font-weight:500">'+(e.status==="confirmed"?"確定":"仮")+'・自動</span></div>'}).join("")||'<div class="memo" style="color:#9aa1aa">まだ記録なし（返信すると自動で貯まる）</div>';
+  app.innerHTML=header("顧客カード")
+    +'<div class="hd" style="position:static;border-top:none"><div class="t" style="font-size:20px">'+esc(d.code)+' <span class="rk" style="display:inline-flex;background:'+(rankColor[d.rank]||"#888")+'">'+esc(d.rank)+'</span></div><button class="b" onclick="go(\'edit/'+encodeURIComponent(code)+'\')">編集</button></div>'
+    +'<div class="frow"><span class="fl">呼び方</span><span class="fv">'+esc(d.nickname||"—")+'</span></div>'
+    +'<div class="frow"><span class="fl">距離感</span><span class="fv"'+(d.register==="keigo_only"?' style="color:#c4381a"':'')+'>'+esc(regLabel(d.register))+'</span></div>'
+    +'<div class="frow"><span class="fl">タグ</span><span class="fv">'+esc(d.tags||"—")+'</span></div>'
+    +'<div class="sec">🔗 紐付けたLINE表示名</div>'
+    +((d.aliases&&d.aliases.length)?d.aliases.map(function(a){return '<div class="frow"><span class="fv" style="text-align:left;width:100%">'+esc(a)+'</span></div>'}).join(""):'<div class="memo" style="color:#9aa1aa">未紐付け</div>')
+    +(attrRows?'<div class="sec">ユーザー定義属性</div>'+attrRows:'')
+    +'<div class="sec">来店・同伴（返信操作から自動記録）</div>'+visitRows
+    +'<div class="sec">自由メモ</div><div class="memo">'+esc(d.note||"—")+'</div><div style="height:24px"></div>';
+}
+
+/* ---------- EDIT / NEW ---------- */
+var EF={};
+async function viewEdit(code){
+  var app=document.getElementById("app");
+  var isNew=!code;
+  if(!DEFS.length){try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){}}
+  if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",aliases:[],attrs:{}}; }
+  else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
+  var regSeg=REG.map(function(r){return '<span class="'+(EF.register===r[0]?"on"+(r[0]==="keigo_only"?" red":""):"")+'" onclick="EF.register=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
+  var rankSeg=["S","A","B"].map(function(r){return '<span class="'+(EF.rank===r?"on"+(r==="S"?" red":""):"")+'" onclick="EF.rank=\''+r+'\';renderEdit()">'+r+'</span>'}).join("");
+  var aliasList=EF.aliases.map(function(a){return '<div class="aliasrow">🔗 '+esc(a)+'</div>'}).join("");
+  var attrItems=DEFS.map(function(df){
+    var v=EF.attrs[df.key]||"";
+    var inp;
+    if(df.atype==="choice"){var opts=(df.options||"").split(",").map(function(o){o=o.trim();return '<option'+(v===o?" selected":"")+'>'+esc(o)+'</option>'}).join("");inp='<select onchange="EF.attrs[\''+esc(df.key)+'\']=this.value"><option value="">—</option>'+opts+'</select>';}
+    else if(df.atype==="date"){inp='<input type="date" value="'+esc(v)+'" onchange="EF.attrs[\''+esc(df.key)+'\']=this.value">';}
+    else if(df.atype==="number"){inp='<input type="number" value="'+esc(v)+'" oninput="EF.attrs[\''+esc(df.key)+'\']=this.value">';}
+    else{inp='<input value="'+esc(v)+'" oninput="EF.attrs[\''+esc(df.key)+'\']=this.value">';}
+    return '<div class="fi"><label style="color:#6b4bd6">'+esc(df.key)+'</label>'+inp+'</div>';
+  }).join("");
+  app.innerHTML=header(isNew?"新規顧客":"顧客を編集")
+    +'<div class="glabel">基本</div><div class="fg">'
+    +'<div class="fi"><label>名前(コード)</label><input id="ef_code" value="'+esc(EF.code)+'" '+(isNew?'placeholder="例: 健さん / T.会長"':'readonly style="color:#999"')+'></div>'
+    +'<div class="fi"><label>ランク</label><div class="seg">'+rankSeg+'</div></div>'
+    +'<div class="fi"><label>呼び方</label><input id="ef_nick" value="'+esc(EF.nickname)+'" placeholder="例: あき"></div>'
+    +'<div class="fi"><label>距離感</label><div class="seg">'+regSeg+'</div></div>'
+    +'<div class="fi"><label>タグ</label><input id="ef_tags" value="'+esc(EF.tags)+'" placeholder="VIP,常連 (カンマ区切り)"></div>'
+    +'</div>'
+    +(isNew?'':'<div class="glabel">🔗 LINE紐付け</div><div class="fg">'+(aliasList||'<div class="aliasrow" style="color:#9aa1aa">未紐付け</div>')
+      +'<div class="fi"><input id="ef_alias" placeholder="LINE表示名を追加"><button class="btn mini" onclick="addAlias()">追加</button></div></div>')
+    +(attrItems?'<div class="glabel">ユーザー定義属性</div><div class="fg">'+attrItems+'</div>':'')
+    +'<div class="glabel">自由メモ（検索対象外）</div><div class="fg"><div class="fi"><textarea id="ef_note" placeholder="好み・注意点など">'+esc(EF.note)+'</textarea></div></div>'
+    +'<div class="btnrow"><button class="btn ghost" onclick="history.back()">キャンセル</button><button class="btn primary" onclick="saveEdit('+(isNew?"true":"false")+')">保存</button></div>';
+}
+function renderEdit(){ // 再描画(seg更新)。入力値は保持
+  syncEF(); viewEdit(EF.code&&!document.getElementById("ef_code")?.readOnly===false?null:EF.code||null);
+}
+function syncEF(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:undefined};
+  if(g("ef_code")!==undefined&&!document.getElementById("ef_code").readOnly)EF.code=g("ef_code");
+  if(g("ef_nick")!==undefined)EF.nickname=g("ef_nick");
+  if(g("ef_tags")!==undefined)EF.tags=g("ef_tags");
+  if(g("ef_note")!==undefined)EF.note=g("ef_note");
+}
+async function addAlias(){
+  syncEF();
+  var v=(document.getElementById("ef_alias")||{}).value; v=(v||"").trim();
+  if(!v)return;
+  if(!EF.code){toast("先に名前を入れて保存してください");return;}
+  try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/alias","POST",{line_name:v}); EF.aliases.push(v); toast("紐付けを追加"); viewEdit(EF.code); }
+  catch(e){toast("失敗: "+e.message)}
+}
+async function saveEdit(isNew){
+  syncEF();
+  if(!EF.code){toast("名前を入れてください");return;}
+  try{
+    if(isNew){ await api("/api/contacts","POST",{code:EF.code,rank:EF.rank,tags:EF.tags,note:EF.note}); }
+    await api("/api/contacts/"+encodeURIComponent(EF.code),"POST",{rank:EF.rank,nickname:EF.nickname,register:EF.register,note:EF.note,tags:EF.tags});
+    for(var k in EF.attrs){ if(EF.attrs[k]!=="") await api("/api/contacts/"+encodeURIComponent(EF.code)+"/attrs","POST",{key:k,value:EF.attrs[k]}); }
+    toast("保存しました");
+    location.hash="card/"+encodeURIComponent(EF.code);
+  }catch(e){toast("保存失敗: "+e.message)}
+}
+
+/* ---------- TRAY ---------- */
+async function viewTray(){
+  var app=document.getElementById("app");
+  var data,contacts=[];
+  try{ data=await api("/api/tray"); }catch(e){ app.innerHTML=header("未紐付けトレイ")+'<div class="err">'+esc(e.message)+'</div>'; return; }
+  try{ contacts=(await api("/api/contacts/search")).contacts||[] }catch(e){}
+  var pending=data.pending||[], muted=data.muted||[];
+  var pk=pending.map(function(p,idx){
+    var opts=contacts.map(function(c){return '<option value="'+esc(c.code)+'">'+esc(c.code)+'</option>'}).join("");
+    return '<div class="trcard"><div class="trtop"><div class="ava" style="width:30px;height:30px">'+esc((p.line_name||"?")[0])+'</div>'
+      +'<span class="trname">'+esc(p.line_name)+'</span><span class="trcnt">'+(p.count||1)+'件</span></div>'
+      +'<div class="trmsg">'+esc(p.last_text||"")+'</div>'
+      +'<div class="tract"><span class="tb link" onclick="togglePicker('+idx+')">既存客に紐付け</span>'
+      +'<span class="tb new" onclick="resolveTray(\''+esc(p.line_name)+'\',\'new\')">新規客</span>'
+      +'<span class="tb priv" onclick="resolveTray(\''+esc(p.line_name)+'\',\'private\')">私用（除外）</span></div>'
+      +'<div class="picker" id="pk'+idx+'"><select id="sel'+idx+'">'+opts+'</select>'
+      +'<button class="btn mini" style="margin-top:6px" onclick="resolveTray(\''+esc(p.line_name)+'\',\'link\',document.getElementById(\'sel'+idx+'\').value)">この客に紐付ける</button></div></div>';
+  }).join("")||'<div class="empty">未紐付けはありません。</div>';
+  var mk=muted.map(function(m){return '<div class="mutedrow"><span>🚫 '+esc(m.line_name)+'</span><span class="u" onclick="unmute(\''+esc(m.line_name)+'\')">解除</span></div>'}).join("");
+  app.innerHTML=header("未紐付けトレイ")
+    +'<div class="trnote">⚠️ 未知のアカウントはここに隔離。仕事(既存/新規)か私用かを仕分けるまで受信箱に出しません。</div>'
+    +pk+(mk?'<div class="sec">私用（取り込まない）一覧</div>'+mk:'')+'<div style="height:24px"></div>';
+}
+function togglePicker(i){var p=document.getElementById("pk"+i);if(p)p.classList.toggle("show")}
+async function resolveTray(name,action,contact){
+  try{ await api("/api/tray/resolve","POST",{line_name:name,action:action,contact:contact||null}); toast(action==="private"?"私用として除外":"仕分けました"); viewTray(); }
+  catch(e){toast("失敗: "+e.message)}
+}
+async function unmute(name){ try{await api("/api/tray/unmute","POST",{line_name:name});toast("解除しました");viewTray();}catch(e){toast(e.message)} }
+
+/* ---------- ATTRS ---------- */
+var ND={type:"choice"};
+async function viewAttrs(){
+  var app=document.getElementById("app");
+  try{ DEFS=(await api("/api/attrs")).defs||[]; }catch(e){ app.innerHTML=header("属性の定義")+'<div class="err">'+esc(e.message)+'</div>'; return; }
+  var cards=DEFS.map(function(d){var t={choice:"選択肢",text:"テキスト",number:"数値",date:"日付"}[d.atype]||d.atype;
+    return '<div class="defcard"><div class="dh">'+esc(d.key)+' <span style="margin-left:auto;font-size:11px;color:#6b4bd6">'+t+'型</span></div>'
+      +(d.options?'<div style="margin-top:6px">'+d.options.split(",").map(function(o){return '<span class="opt">'+esc(o.trim())+'</span>'}).join("")+'</div>':'')+'</div>';
+  }).join("")||'<div class="empty">まだ属性がありません。下で作成。</div>';
+  var types=[["choice","選択肢"],["text","テキスト"],["number","数値"],["date","日付"]];
+  app.innerHTML=header("属性の定義")
+    +'<div style="padding:10px 16px;font-size:12px;color:#6b7280">属性は1回作れば全顧客共通の検索軸になります。表記ゆれ防止に「選択肢型」推奨。</div>'
+    +cards
+    +'<div class="defcard" style="border:1.5px dashed #c9bef2;background:#faf8ff"><div class="dh" style="color:#6b4bd6">＋ 新しい属性を作る</div>'
+    +'<div class="fi" style="padding:8px 0"><label>名前</label><input id="nd_key" placeholder="例: 好きな酒"></div>'
+    +'<div class="typechips">'+types.map(function(t){return '<span class="tc'+(ND.type===t[0]?" on":"")+'" onclick="ND.type=\''+t[0]+'\';renderNDType()">'+t[1]+'</span>'}).join("")+'</div>'
+    +'<div class="fi" id="nd_optrow" style="padding:8px 0;'+(ND.type==="choice"?'':'display:none')+'"><label>選択肢</label><input id="nd_opts" placeholder="日本酒,焼酎,シャンパン"></div>'
+    +'<button class="btn primary" style="margin-top:10px" onclick="addDef()">属性を作成</button></div><div style="height:24px"></div>';
+}
+function renderNDType(){var r=document.getElementById("nd_optrow");if(r)r.style.display=ND.type==="choice"?"":"none";
+  document.querySelectorAll(".tc").forEach(function(x){x.classList.remove("on")});
+  var ts=["choice","text","number","date"],labels=["選択肢","テキスト","数値","日付"];
+  document.querySelectorAll(".tc").forEach(function(x,i){if(ts[i]===ND.type)x.classList.add("on")});
+}
+async function addDef(){
+  var key=(document.getElementById("nd_key")||{}).value;key=(key||"").trim();
+  var opts=(document.getElementById("nd_opts")||{}).value||"";
+  if(!key){toast("名前を入れてください");return;}
+  try{ await api("/api/attrs","POST",{key:key,type:ND.type,options:opts}); toast("属性を作成"); viewAttrs(); }
+  catch(e){toast("失敗: "+e.message)}
+}
+
+/* ---------- router ---------- */
+function go(h){location.hash=h}
+async function route(){
+  var h=location.hash.replace(/^#/,"")||"list";
+  var parts=h.split("/");
+  if(parts[0]==="list") return viewList();
+  if(parts[0]==="card") return viewCard(decodeURIComponent(parts[1]));
+  if(parts[0]==="edit") return viewEdit(decodeURIComponent(parts[1]));
+  if(parts[0]==="new") return viewEdit(null);
+  if(parts[0]==="tray") return viewTray();
+  if(parts[0]==="attrs") return viewAttrs();
+  viewList();
+}
+window.addEventListener("hashchange",route);
+route();
+</script>
+</body>
+</html>

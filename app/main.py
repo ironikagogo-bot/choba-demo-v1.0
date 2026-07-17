@@ -609,3 +609,26 @@ def contact_set_attr(code: str, body: AttrValIn):
 def contacts_search(q: str = "", attr_key: str = "", attr_val: str = ""):
     from . import crm
     return {"contacts": crm.search_contacts(q, attr_key, attr_val)}
+
+
+class ContactUpdate(BaseModel):
+    rank: str | None = None
+    nickname: str | None = None
+    register: str | None = None
+    note: str | None = None
+    tags: str | None = None
+    cycle_days: int | None = None
+
+@app.post("/api/contacts/{code}")
+def contact_update(code: str, body: ContactUpdate):
+    from . import crm
+    fields = {k: v for k, v in body.dict().items() if v is not None}
+    res = crm.update_contact(code, fields)
+    if not res.get("ok"):
+        raise HTTPException(404, res.get("error", "update failed"))
+    return {"ok": True, "contact": crm.contact_detail(code)}
+
+@app.get("/crm")
+def crm_page():
+    """顧客管理(3層＋未紐付けトレイ＋属性)の実ページ。"""
+    return FileResponse(os.path.join(STATIC_DIR, "crm.html"))

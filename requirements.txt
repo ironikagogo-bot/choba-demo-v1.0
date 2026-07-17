@@ -1,4 +1,3 @@
-# 帳場 クラウド最小依存(wheelのみ・ソースビルド不要)。pywebpush/py-vapid/pytest/httpxは除外。
 fastapi>=0.110
 uvicorn>=0.29
 requests>=2.31

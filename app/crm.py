@@ -246,3 +246,21 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
     for x in rows:
         x["attrs"] = get_attrs(x["code"])
     return rows
+
+
+# ---------- 顧客の基本項目更新(編集フォーム用) ----------
+_ALLOWED = {"rank", "nickname", "register", "note", "tags", "cycle_days"}
+
+def update_contact(code: str, fields: dict) -> dict:
+    ensure()
+    if not db.get_contact(code):
+        return {"ok": False, "error": "contact not found"}
+    sets, vals = [], []
+    for k, v in (fields or {}).items():
+        if k in _ALLOWED:
+            sets.append(f"{k}=?"); vals.append(v)
+    if sets:
+        vals.append(code)
+        with db.conn() as c:
+            c.execute(f"UPDATE contacts SET {', '.join(sets)} WHERE code=?", vals)
+    return {"ok": True}
