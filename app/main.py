@@ -178,6 +178,7 @@ def inbox():
         _c = db.get_contact(m["contact"]) or {}
         m["rank"] = _c.get("rank", "B")
         m["unlinked"] = 1 if (_c.get("linked") == 0) else 0
+        m["kind"] = _c.get("kind") or "customer"
         if m["category"] == "urgent":
             out["urgent"].append(m)
         elif m["category"] == "rally":
@@ -209,7 +210,9 @@ def act(mid: int, body: Action):
         raise HTTPException(400, "bad action")
     db.set_status(mid, body.action)
     # 返信したら実績を自動記録(入力ゼロ原則): 来店系→visit、同伴系→dohan
-    if body.action == "replied":
+    # ※店内・業務(黒服/ママ)は営業対象外なので実績を記録しない
+    _kind = (db.get_contact(msg["contact"]) or {}).get("kind", "customer")
+    if body.action == "replied" and _kind != "staff":
         _r = msg["reason"] or ""
         if ("来店" in _r) or ("席" in _r):
             db.add_event(msg["contact"], "visit", f"{msg['contact']} 来店(仮)", "tentative")
@@ -656,6 +659,10 @@ def inbox_classify(body: InboxClassify):
         crm.link_contact(name)
         crm.add_alias(name, name)
         return {"ok": True, "contact": name}
+    if body.action == "staff":
+        crm.mark_staff(name)
+        crm.add_alias(name, name)
+        return {"ok": True, "contact": name, "kind": "staff"}
     if body.action == "private":
         crm.mute(name)
         crm.discard_unlinked(name)

@@ -51,7 +51,7 @@ def ensure():
     with db.conn() as c:
         c.executescript(_SCHEMA)
         # 顧客に呼び方(nickname)・距離感(register)列を後付け(既にあれば無視)
-        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''", "real_name TEXT DEFAULT ''", "phone TEXT DEFAULT ''", "note_pos TEXT DEFAULT ''", "note_neg TEXT DEFAULT ''", "linked INTEGER DEFAULT 1"):
+        for ddl in ("nickname TEXT DEFAULT ''", "register TEXT DEFAULT ''", "real_name TEXT DEFAULT ''", "phone TEXT DEFAULT ''", "note_pos TEXT DEFAULT ''", "note_neg TEXT DEFAULT ''", "linked INTEGER DEFAULT 1", "kind TEXT DEFAULT 'customer'"):
             try:
                 c.execute(f"ALTER TABLE contacts ADD COLUMN {ddl}")
             except Exception:
@@ -235,6 +235,7 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
     attr_val = (attr_val or "").strip()
     with db.conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM contacts ORDER BY rank, code")]
+        rows = [r for r in rows if (r.get("kind") or "customer") == "customer"]
         if attr_key:
             keep = set(r["contact"] for r in c.execute(
                 "SELECT contact FROM contact_attrs WHERE akey=?" +
@@ -299,3 +300,10 @@ def discard_unlinked(code: str):
         c.execute("DELETE FROM contact_attrs WHERE contact=?", (code,))
         c.execute("DELETE FROM contact_aliases WHERE contact=?", (code,))
         c.execute("DELETE FROM contacts WHERE code=?", (code,))
+
+
+def mark_staff(code: str):
+    """店内・業務(黒服/ママ/同僚)として登録。営業対象外・顧客リスト/実績に載せない。"""
+    ensure()
+    with db.conn() as c:
+        c.execute("UPDATE contacts SET kind='staff', linked=1 WHERE code=?", (code,))

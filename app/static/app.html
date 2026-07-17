@@ -139,6 +139,17 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 .thread{margin:8px 0 2px;padding:9px 0 3px;border-top:1px dashed var(--line)}
 .thread .msg{background:#F0EADC;border-radius:10px;border-top-left-radius:3px;padding:6px 10px;margin-bottom:5px}
 .thread .msg + .msg{border-top:none;padding-top:6px}
+
+/* 店内・業務(黒服/ママ) */
+.unkchoice3{display:flex;gap:6px;margin-top:8px}
+.unkchoice3 button{flex:1;padding:9px 2px;border-radius:7px;font-size:12px;font-weight:700;border:1.5px solid;line-height:1.25;font-family:inherit}
+.unkchoice3 .work{background:#EEF4EC;border-color:#C4D8C0;color:var(--ok)}
+.unkchoice3 .staff{background:#EAEEF3;border-color:#C3CEDC;color:#3A5170}
+.unkchoice3 .priv{background:#FBEDEA;border-color:#E7C4BC;color:var(--shu)}
+.unkchoice3 small{display:block;font-size:8.5px;font-weight:400;color:var(--muted);margin-top:1px}
+.card.staff{border-left:3px solid #3A5170;overflow:hidden}
+.stafftag{font-size:10px;font-weight:700;color:#3A5170;background:#EAEEF3;border:1px solid #C3CEDC;border-radius:3px;padding:1px 7px}
+.staffnote{font-size:10px;color:var(--muted);margin-top:7px}
 </style>
 </head>
 <body>
@@ -339,14 +350,28 @@ function unknownCardHtml(m) {
     <div class="msg">${esc(m.text)}</div>
     <div class="linename">🔗 LINEの表示名：${esc(m.contact)}</div>
     <div class="unkask">この相手はどちら？</div>
-    <div class="unkchoice">
-      <button class="work" data-act="unkwork" data-contact="${esc(m.contact)}">仕事<small>顧客に登録</small></button>
-      <button class="priv" data-act="unkpriv" data-contact="${esc(m.contact)}">プライベート<small>今後受け取らない</small></button>
+    <div class="unkchoice3">
+      <button class="work" data-act="unkwork" data-contact="${esc(m.contact)}">顧客<small>営業先</small></button>
+      <button class="staff" data-act="unkstaff" data-contact="${esc(m.contact)}">店内<small>黒服・ママ</small></button>
+      <button class="priv" data-act="unkpriv" data-contact="${esc(m.contact)}">私用<small>受け取らない</small></button>
     </div>
+  </div>`;
+}
+function staffCardHtml(m, cls) {
+  const alert = (cls === 'u')
+    ? `<div class="alertbar" style="background:#3A5170"><span class="pulse"></span>店内・要対応<span class="el">${fmtElapsed(m.ts)}</span></div>`
+    : '';
+  return `<div class="card staff" id="card-${m.id}">
+    ${alert}
+    <div class="row"><span class="code">${esc(m.contact)}</span><span class="stafftag">店内</span><span class="reason" style="color:#3A5170">${esc(m.reason)}</span></div>
+    <div class="msg">${esc(m.text)}</div>
+    <div class="staffnote">業務連絡（営業下書きは作りません）</div>
+    <div class="acts"><button data-act="skipped" data-mid="${m.id}">対応済み</button><button data-act="deferred" data-mid="${m.id}">あとで</button></div>
   </div>`;
 }
 function msgCardHtml(m, cls) {
   if (m.unlinked) return unknownCardHtml(m);
+  if (m.kind === 'staff') return staffCardHtml(m, cls);
   if (cls === 'u') {
     return `<div class="card u" id="card-${m.id}">
       <div class="alertbar"><span class="pulse"></span>要即返信${m.rank === 'S' ? '・S客' : ''}<span class="el">${fmtElapsed(m.ts)}</span></div>
@@ -429,6 +454,12 @@ document.addEventListener('click', async (ev) => {
     switchToContactsEdit(c);
     setTimeout(() => loadInbox(true), 400);
     return;
+  }
+  if (act === 'unkstaff') {
+    const c = el.dataset.contact;
+    try { await api('/api/inbox/classify', { contact: c, action: 'staff' }); }
+    catch (e) { toast('失敗しました'); return; }
+    toast('店内・業務として登録しました'); loadInbox(true); return;
   }
   if (act === 'unkpriv') {
     const c = el.dataset.contact;
