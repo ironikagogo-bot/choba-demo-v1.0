@@ -150,6 +150,11 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 .card.staff{border-left:3px solid #3A5170;overflow:hidden}
 .stafftag{font-size:10px;font-weight:700;color:#3A5170;background:#EAEEF3;border:1px solid #C3CEDC;border-radius:3px;padding:1px 7px}
 .staffnote{font-size:10px;color:var(--muted);margin-top:7px}
+
+/* デモ: リセットバー */
+.demobar{margin:12px 16px 2px;padding:9px 12px;background:#FBF6E9;border:1px solid #E0C98A;border-radius:8px;align-items:center;gap:10px}
+.demobar .t{font-size:11px;color:var(--gold);font-weight:700;flex:1}
+.demobar button{background:var(--gold);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;font-family:inherit;flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -167,6 +172,7 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 
   <!-- 受信箱 -->
   <section class="view on" id="view-inbox">
+    <div class="demobar" id="demoBar" style="display:none"><span class="t">デモ体験中 — いつでも最初からやり直せます</span><button id="demoResetBtn">🔄 最初からやり直す</button></div>
     <div class="sec shu"><div class="bar"></div><span>即対応</span><div class="rule"></div><span class="hint" id="uHint"></span></div>
     <div id="urgent"></div>
     <div class="sec"><div class="bar"></div><span>ラリー</span><div class="rule"></div><span class="hint" id="rHint"></span></div>
@@ -860,6 +866,26 @@ loadInbox(true);
 loadDesk();
 setInterval(loadInbox, 8000);
 setInterval(loadDesk, 5000);
+
+/* デモ: 最初からやり直す */
+(async function () {
+  try {
+    var st = await api('/api/desk/status');
+    if (st && st.mode === 'sim') {
+      var bar = document.getElementById('demoBar'); if (bar) bar.style.display = 'flex';
+    }
+  } catch (e) {}
+  var rb = document.getElementById('demoResetBtn');
+  if (rb) rb.addEventListener('click', async function () {
+    rb.disabled = true; rb.textContent = 'リセット中…';
+    try { await api('/api/demo/reset', {}); } catch (e) {}
+    try { cardState.clear(); } catch (e) {}
+    try { expanded.clear(); } catch (e) {}
+    toast('デモを最初から流します');
+    setTimeout(function () { loadInbox(true); rb.disabled = false; rb.textContent = '🔄 最初からやり直す'; }, 900);
+  });
+})();
+
 </script>
 </body>
 </html>

@@ -27,18 +27,17 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 PROVISIONER = MockProvisioner()
 DESKS: dict[str, object] = {}   # user_id -> Desk (パイロットはメモリ保持)
 
-# 初期データ(空DBのときのみ)
-if not db.list_contacts():
+# 初期データ(デモ用の見せる顧客)
+def seed_initial_contacts():
     if config.DEMO:
-        # クラウドの「見せる用」ダミー顧客(タグ・誕生日・来店記録つき=全機能が動いて見える)
         _now = time.time()
         _demo = [
             # code, rank, cycle, tags, birthday(MM-DD), 前回来店(日前 or None)
             ("T.会長", "S", 10, "VIP", "07-20", 2),
-            ("K.専務", "A", 14, "常連", "", 40),      # ご無沙汰(周期超過)
-            ("M.先生", "A", 21, "", "07-22", None),   # 誕生日近い
-            ("Y.社長", "B", 30, "", "", 1),           # 直近来店=お礼対象
-            ("S.部長", "B", 30, "常連", "", 90),       # ご無沙汰
+            ("K.専務", "A", 14, "常連", "", 40),
+            ("M.先生", "A", 21, "", "07-22", None),
+            ("Y.社長", "B", 30, "", "", 1),
+            ("S.部長", "B", 30, "常連", "", 90),
             ("H.常務", "S", 12, "VIP", "", 5),
         ]
         for code, rank, cyc, tags, bd, days in _demo:
@@ -49,6 +48,9 @@ if not db.list_contacts():
         for code, rank, cyc in [("T.会長", "S", 10), ("K.専務", "A", 14),
                                 ("M.先生", "A", 21), ("Y.社長", "B", 30), ("S.部長", "B", 30)]:
             db.upsert_contact(code, rank, cyc)
+
+if not db.list_contacts():
+    seed_initial_contacts()
 
 
 # 見せる用インスタンス(DEMO)はデスクを最初から開いておく(「未開設」表示を避ける)
@@ -668,3 +670,71 @@ def inbox_classify(body: InboxClassify):
         crm.discard_unlinked(name)
         return {"ok": True}
     raise HTTPException(400, "bad action")
+
+
+@app.post("/api/demo/reset")
+def demo_reset():
+    """デモを完全リセットして最初から再生(受信・下書き・実績＋紐付け/私用/未登録/属性を全消去→再シード→台本を頭から)。デモ専用。"""
+    if not config.DEMO:
+        raise HTTPException(403, "デモ専用の操作です")
+    from . import crm
+    db.clear_demo_messages()
+    crm.reset_demo()
+    seed_initial_contacts()
+    try:
+        deskservice.SERVICE.replay()   # sim: 台本を頭から再生(watcher再起動)
+    except RuntimeError:
+        try:
+            deskservice.SERVICE.start("demo", 1.0)
+            deskservice.SERVICE.approve_login()
+        except Exception:
+            pass
+    return {"ok": True}
+
+
+# ========== お席（同卓）＝御礼リスト・実績の一次オブジェクト ==========
+class MemberIn(BaseModel):
+    contact: str
+    role: str = "peer"     # customer/intro/peer/after/help/report
+    stand: str = "equal"   # senior/equal/junior
+
+class SittingIn(BaseModel):
+    date_label: str = ""
+    main: str = ""
+    members: list[MemberIn] = []
+
+class SentIn(BaseModel):
+    contact: str
+
+@app.post("/api/sittings")
+def sitting_create(body: SittingIn):
+    from . import sittings
+    members = [{"contact": m.contact, "role": m.role, "stand": m.stand} for m in body.members]
+    sid = sittings.create_sitting(body.date_label, body.main, members)
+    return {"ok": True, "id": sid}
+
+@app.get("/api/sittings")
+def sitting_list():
+    from . import sittings
+    return {"sittings": sittings.list_sittings()}
+
+@app.get("/api/sittings/{sid}")
+def sitting_get(sid: int):
+    from . import sittings
+    s = sittings.get_sitting(sid)
+    if not s:
+        raise HTTPException(404)
+    return s
+
+@app.post("/api/sittings/{sid}/orei")
+def sitting_orei(sid: int):
+    from . import sittings
+    if not sittings.get_sitting(sid):
+        raise HTTPException(404)
+    return {"orei": sittings.generate_orei(sid)}
+
+@app.post("/api/sittings/{sid}/sent")
+def sitting_sent(sid: int, body: SentIn):
+    from . import sittings
+    sittings.mark_sent(sid, body.contact)
+    return {"ok": True}

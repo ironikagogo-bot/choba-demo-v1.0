@@ -307,3 +307,12 @@ def mark_staff(code: str):
     ensure()
     with db.conn() as c:
         c.execute("UPDATE contacts SET kind='staff', linked=1 WHERE code=?", (code,))
+
+
+def reset_demo():
+    """デモ全リセット: CRMの紐付け/私用/未登録/属性を全消去し、顧客も全削除(呼び出し側で再シード)。"""
+    ensure()
+    with db.conn() as c:
+        for t in ("contact_aliases", "muted_names", "pending_links", "contact_attrs"):
+            c.execute(f"DELETE FROM {t}")
+        c.execute("DELETE FROM contacts")
