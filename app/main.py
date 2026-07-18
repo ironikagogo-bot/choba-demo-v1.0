@@ -6,9 +6,11 @@ UI:    http://localhost:8000/
 """
 import os
 import time
+import hmac
+import hashlib
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,6 +24,92 @@ linking.init()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# ==================== 玄関認証(パスワード1枚) ====================
+_AUTH_COOKIE = "choba_auth"
+# Cookie不要で通す経路: ログイン・機械投入(トークンで別認証)・静的・PWA・ヘルス
+_EXEMPT = ("/login", "/api/login", "/api/logout", "/static/", "/sw.js",
+           "/manifest.webmanifest", "/api/android/notify", "/api/quickdraft", "/healthz")
+_login_hits: dict = {}
+
+_LOGIN_HTML = """<!DOCTYPE html><html lang=ja><head><meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>帳場</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@700&family=Zen+Kaku+Gothic+New&display=swap');
+*{box-sizing:border-box;margin:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(700px 500px at 50% 20%,#332c24,#1b1712);font-family:'Zen Kaku Gothic New',sans-serif;color:#efe8db}
+.box{width:min(360px,88%);text-align:center}.b{font-family:'Shippori Mincho',serif;font-size:40px;letter-spacing:.34em;color:#fff}
+.t{font-size:12px;color:#b3a988;margin:10px 0 26px;letter-spacing:.1em}
+input{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #5a5142;background:#2b2620;color:#fff;font-size:16px;text-align:center}
+button{width:100%;margin-top:12px;padding:13px;border:none;border-radius:10px;background:#A8842F;color:#fff;font-size:15px;font-weight:700;font-family:inherit}
+.err{color:#e08a7c;font-size:12.5px;margin-top:12px;min-height:16px}</style></head>
+<body><div class=box><div class=b>帳　場</div><div class=t>ちょうば</div>
+<input id=pw type=password placeholder=パスワード autofocus autocomplete=current-password>
+<button id=go>入る</button><div class=err id=err></div></div>
+<script>
+var pw=document.getElementById('pw'),err=document.getElementById('err');
+async function go(){err.textContent='';var v=pw.value;
+ try{var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:v})});
+ if(r.ok){location.href='/';}else if(r.status===429){err.textContent='試行が多すぎます。少し待って。';}else{err.textContent='パスワードが違います';pw.value='';pw.focus();}}
+ catch(e){err.textContent='通信エラー';}}
+document.getElementById('go').onclick=go;pw.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
+</script></body></html>"""
+
+def _session_token():
+    return hmac.new(b"choba-session-v1", config.PASSWORD.encode("utf-8"), hashlib.sha256).hexdigest()
+
+def _rate_ok(ip):
+    now = time.time()
+    q = [t for t in _login_hits.get(ip, []) if now - t < 60]
+    q.append(now)
+    _login_hits[ip] = q[-30:]
+    return len(q) <= 10
+
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    if not config.PASSWORD:
+        return await call_next(request)
+    path = request.url.path
+    if any(path == e or path.startswith(e) for e in _EXEMPT):
+        return await call_next(request)
+    tok = request.cookies.get(_AUTH_COOKIE, "")
+    if tok and hmac.compare_digest(tok, _session_token()):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"error": "unauthorized", "login": "/login"}, status_code=401)
+    return RedirectResponse("/login", status_code=302)
+
+@app.get("/healthz")
+def _healthz():
+    return {"ok": True}
+
+@app.get("/login")
+def _login_page():
+    return HTMLResponse(_LOGIN_HTML)
+
+class _LoginIn(BaseModel):
+    password: str = ""
+
+@app.post("/api/login")
+def _login(body: _LoginIn, request: Request):
+    ip = request.client.host if request.client else "?"
+    if not _rate_ok(ip):
+        raise HTTPException(429, "試行が多すぎます。1分ほど待ってからやり直してください。")
+    if not config.PASSWORD:
+        return {"ok": True}
+    if not hmac.compare_digest(body.password or "", config.PASSWORD):
+        raise HTTPException(401, "パスワードが違います")
+    is_https = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(_AUTH_COOKIE, _session_token(), httponly=True, samesite="lax",
+                    secure=is_https, max_age=60 * 60 * 24 * 90, path="/")
+    return resp
+
+@app.post("/api/logout")
+def _logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(_AUTH_COOKIE, path="/")
+    return resp
+# ================================================================
 
 # パイロット: プロビジョナはモック(道4スパイクで RealProvisioner に差し替え)
 PROVISIONER = MockProvisioner()
@@ -60,9 +148,8 @@ def seed_initial_contacts():
             if kind and kind != "customer":
                 _crm.set_kind(code, kind)
     else:
-        for code, rank, cyc in [("T.会長", "S", 10), ("K.専務", "A", 14),
-                                ("M.先生", "A", 21), ("Y.社長", "B", 30), ("S.部長", "B", 30)]:
-            db.upsert_contact(code, rank, cyc)
+        # 本番: ダミーデータは入れない(本人が自分で登録・トーク履歴取り込み)
+        return
 
 if not db.list_contacts():
     seed_initial_contacts()
@@ -171,7 +258,7 @@ async def android_notify(request: Request):
         for k, v in body.items():
             if v and not data.get(k):
                 data[k] = str(v)
-    if config.INGEST_TOKEN and str(data.get("token", "")) != config.INGEST_TOKEN:
+    if config.INGEST_TOKEN and not hmac.compare_digest(str(data.get("token", "")), config.INGEST_TOKEN):
         raise HTTPException(401, "bad token")
     res = deskservice.SERVICE.android_ingest(
         str(data.get("package", "") or ""),
@@ -248,7 +335,16 @@ async def import_profile(file: UploadFile, self_name: str = "自分",
       各相手の専用プロファイルを作成(=顧客登録と学習を一度に行う本命フロー)
     """
     from .style_profile import discover_contacts, extract_contact_profile, Profile
-    text = (await file.read()).decode("utf-8", errors="replace")
+    _MAX = 30 * 1024 * 1024
+    _buf = b""
+    while True:
+        _chunk = await file.read(1024 * 1024)
+        if not _chunk:
+            break
+        _buf += _chunk
+        if len(_buf) > _MAX:
+            raise HTTPException(413, "ファイルが大きすぎます(最大30MB)")
+    text = _buf.decode("utf-8", errors="replace")
 
     result = {"registered": [], "profiled": []}
 
@@ -520,7 +616,7 @@ def quickdraft(body: QuickDraftIn):
     iOSショートカット(コピー→この入口へPOST→下書きをクリップボードへ)から叩く想定。
     認証は android/notify と同じ INGEST_TOKEN(未設定なら認証なし)。"""
     from .quickdraft import draft_from_text
-    if config.INGEST_TOKEN and str(body.token or "") != config.INGEST_TOKEN:
+    if config.INGEST_TOKEN and not hmac.compare_digest(str(body.token or ""), config.INGEST_TOKEN):
         raise HTTPException(401, "bad token")
     text = (body.text or "").strip()
     if not text:
@@ -645,6 +741,10 @@ class ContactUpdate(BaseModel):
     phone: str | None = None
     note_pos: str | None = None
     note_neg: str | None = None
+    stand: str | None = None
+    birthday: str | None = None
+    kids_bday: str | None = None
+    founding: str | None = None
 
 @app.post("/api/contacts/{code}")
 def contact_update(code: str, body: ContactUpdate):

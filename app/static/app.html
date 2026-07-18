@@ -179,6 +179,8 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
     <div id="rally"></div>
     <div class="sec"><div class="bar"></div><span>まとめ箱</span><div class="rule"></div><span class="hint" id="bHint"></span></div>
     <div id="batch"></div>
+    <div class="sec"><div class="bar" style="background:#3A5170"></div><span style="color:#3A5170">店内</span><div class="rule"></div><span class="hint" id="sHint"></span></div>
+    <div id="staff"></div>
     <div class="note">読む・判断・下書きは帳場内で完結します。送信を伴う操作だけLINEに移ります（コピー済みの本文を貼って送信）。帳場は送信機能そのものを持ちません。</div>
   </section>
 
@@ -369,8 +371,8 @@ function staffCardHtml(m, cls) {
     ${alert}
     <div class="row"><span class="code">${esc(m.contact)}</span><span class="stafftag">店内</span><span class="reason" style="color:#3A5170">${esc(m.reason)}</span></div>
     <div class="msg">${esc(m.text)}</div>
-    <div class="staffnote">業務連絡（営業下書きは作りません）</div>
-    <div class="acts"><button data-act="skipped" data-mid="${m.id}">対応済み</button><button data-act="deferred" data-mid="${m.id}">あとで</button></div>
+    <div class="staffnote">同僚モード — 営業ではなく短い実務返信を作ります</div>
+    <div class="draft-area">${draftAreaHtml(m.id)}</div>
   </div>`;
 }
 function msgCardHtml(m, cls) {
@@ -420,18 +422,26 @@ async function loadInbox(force) {
   lastInboxJson = j;
   updateBadge(data);
 
-  $('#urgent').innerHTML = data.urgent.length
-    ? data.urgent.map((m) => msgCardHtml(m, 'u')).join('')
+  const _isStaff = (m) => m.kind === 'staff';
+  const _uCust = data.urgent.filter((m) => !_isStaff(m));
+  const _uStaff = data.urgent.filter(_isStaff);
+  $('#urgent').innerHTML = _uCust.length
+    ? _uCust.map((m) => msgCardHtml(m, 'u')).join('')
     : '<div class="empty">いまは静かです。</div>';
   const rallyKeys = Object.keys(data.rally);
   $('#rally').innerHTML = rallyKeys.length
     ? rallyKeys.map((c) => rallyGroupHtml(c, data.rally[c])).join('')
     : '<div class="empty">続いているやり取りはありません。</div>';
   $('#bHint').textContent = `${data.batch_time} に一括`;
-  $('#batch').innerHTML = data.batch.length
-    ? data.batch.map((m) => msgCardHtml(m, '')).join('')
+  const _bCust = data.batch.filter((m) => !_isStaff(m));
+  const _bStaff = data.batch.filter(_isStaff);
+  $('#batch').innerHTML = _bCust.length
+    ? _bCust.map((m) => msgCardHtml(m, '')).join('')
     : '<div class="empty">まとめ待ちはありません。</div>';
-  $('#uHint').textContent = data.urgent.length ? `${data.urgent.length}件` : '';
+  const _staffHtml = _uStaff.map((m) => staffCardHtml(m, 'u')).concat(_bStaff.map((m) => staffCardHtml(m, ''))).join('');
+  $('#staff').innerHTML = _staffHtml || '<div class="empty">店内の連絡はありません。</div>';
+  $('#sHint').textContent = (_uStaff.length + _bStaff.length) ? `${_uStaff.length + _bStaff.length}件` : '';
+  $('#uHint').textContent = _uCust.length ? `${_uCust.length}件` : '';
   $('#rHint').textContent = rallyKeys.length ? `${rallyKeys.length}組` : '';
 }
 function updateBadge(data) {

@@ -45,3 +45,5 @@ WATCHER = os.environ.get("CHOUBA_WATCHER", "sim")
 WATCH_POLL_SEC = float(os.environ.get("CHOUBA_WATCH_POLL_SEC", "2.0"))
 # Androidからの通知受信を認証する合言葉(空なら認証なし=開発時のみ)
 INGEST_TOKEN = os.environ.get("CHOUBA_INGEST_TOKEN", "")
+# 玄関認証のパスワード(空なら認証オフ=開発時のみ)。本番は必ず設定する。
+PASSWORD = os.environ.get("CHOUBA_PASSWORD", "")

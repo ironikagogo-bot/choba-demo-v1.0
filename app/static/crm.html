@@ -198,14 +198,22 @@ async function viewCard(code){
 
 /* ---------- EDIT / NEW ---------- */
 var EF={};
+var EF_ISNEW=false;
 async function viewEdit(code){
   var app=document.getElementById("app");
   var isNew=!code;
+  EF_ISNEW=isNew;
   if(!DEFS.length){try{DEFS=(await api("/api/attrs")).defs||[]}catch(e){}}
   if(isNew){ EF={code:"",rank:"B",nickname:"",register:"mix",tags:"",note:"",real_name:"",phone:"",note_pos:"",note_neg:"",stand:"",birthday:"",kids_bday:"",founding:"",kind:"customer",aliases:[],attrs:{}}; }
   else{ try{var d=await api("/api/contacts/"+encodeURIComponent(code)+"/detail");EF={code:d.code,rank:d.rank||"B",nickname:d.nickname||"",register:d.register||"mix",tags:d.tags||"",note:d.note||"",real_name:d.real_name||"",phone:d.phone||"",note_pos:d.note_pos||"",note_neg:d.note_neg||"",stand:d.stand||"",birthday:d.birthday||"",kids_bday:d.kids_bday||"",founding:d.founding||"",kind:d.kind||"customer",aliases:d.aliases||[],attrs:d.attrs||{}};}catch(e){app.innerHTML='<div class="err">'+esc(e.message)+'</div>';return;} }
+  paintEdit();
+}
+function paintEdit(){
+  var app=document.getElementById("app");
+  var isNew=EF_ISNEW;
   var regSeg=REG.map(function(r){return '<span class="'+(EF.register===r[0]?"on"+(r[0]==="keigo_only"?" red":""):"")+'" onclick="EF.register=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var rankSeg=["S","A","B"].map(function(r){return '<span class="'+(EF.rank===r?"on"+(r==="S"?" red":""):"")+'" onclick="EF.rank=\''+r+'\';renderEdit()">'+r+'</span>'}).join("");
+  var standDim=(EF.kind==="customer"); if(standDim){EF.stand="";}
   var STANDS=[["","なし"],["senior","先輩"],["equal","対等"],["junior","後輩"]];
   var standSeg=STANDS.map(function(r){return '<span class="'+(EF.stand===r[0]?"on":"")+'" onclick="EF.stand=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var KINDS=[["customer","顧客"],["peer","同業者"],["staff","店内"],["excolleague","元同僚"]];
@@ -232,7 +240,7 @@ async function viewEdit(code){
     +'<div class="fi"><label>距離感</label><div class="seg">'+regSeg+'</div></div>'
     +'<div class="fi"><label>タグ</label><input id="ef_tags" value="'+esc(EF.tags)+'" placeholder="VIP,常連 (カンマ区切り)"></div>'
     +'<div class="fi"><label>種別</label><div class="seg">'+kindSeg+'</div></div>'
-    +'<div class="fi"><label>立場（先輩後輩）</label><div class="seg">'+standSeg+'</div></div>'
+    +'<div class="fi"'+(standDim?' style="opacity:.4;pointer-events:none"':'')+'><label>立場（先輩後輩）'+(standDim?' <span style="font-size:10px;color:#8D8674;font-weight:400">顧客には不要</span>':'')+'</label><div class="seg">'+standSeg+'</div></div>'
     +'</div>'
     +'<div class="glabel">記念日（お祝いLINE用・ご命日は扱いません）</div><div class="fg">'
     +'<div class="fi"><label>誕生日（月-日）</label><input id="ef_bday" value="'+esc(EF.birthday)+'" placeholder="例: 07-20" inputmode="numeric"></div>'
@@ -249,8 +257,8 @@ async function viewEdit(code){
     +'<div class="glabel">自由メモ（中立・検索対象外）</div><div class="fg"><div class="fi"><textarea id="ef_note" placeholder="好み・雑記">'+esc(EF.note)+'</textarea></div></div>'
     +'<div class="btnrow"><button class="btn ghost" onclick="history.back()">キャンセル</button><button class="btn primary" onclick="saveEdit('+(isNew?"true":"false")+')">保存</button></div>';
 }
-function renderEdit(){ // 再描画(seg更新)。入力値は保持
-  syncEF(); viewEdit(EF.code&&!document.getElementById("ef_code")?.readOnly===false?null:EF.code||null);
+function renderEdit(){ // seg更新: 入力値を保持したまま再描画(サーバー再読込しない)
+  syncEF(); paintEdit();
 }
 function syncEF(){
   var g=function(id){var e=document.getElementById(id);return e?e.value:undefined};
@@ -271,7 +279,7 @@ async function addAlias(){
   var v=(document.getElementById("ef_alias")||{}).value; v=(v||"").trim();
   if(!v)return;
   if(!EF.code){toast("先に名前を入れて保存してください");return;}
-  try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/alias","POST",{line_name:v}); EF.aliases.push(v); toast("紐付けを追加"); viewEdit(EF.code); }
+  try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/alias","POST",{line_name:v}); EF.aliases.push(v); toast("紐付けを追加"); paintEdit(); }
   catch(e){toast("失敗: "+e.message)}
 }
 async function saveEdit(isNew){
