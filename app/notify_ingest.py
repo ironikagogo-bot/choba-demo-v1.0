@@ -24,6 +24,8 @@ _SUMMARY_PATTERNS = [
 
 # グループトークの本文が "送信者: 本文" 形式のとき分離する
 _GROUP_SPLIT = re.compile(r"^(?P<sender>[^:：]{1,30})[\s]*[:：][\s]*(?P<msg>.+)$", re.S)
+# メディア/アクション通知: "送信者 が 写真/スタンプ等 を送信しました" から送信者を抽出
+_MEDIA_SENDER = re.compile(r"^(?P<sender>.{1,30}?)が(?P<action>(?:写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)を送信しました)$")
 
 
 def parse_line_notification(title: str, text: str, package: str | None = None) -> dict | None:
@@ -50,12 +52,23 @@ def parse_line_notification(title: str, text: str, package: str | None = None) -
     if _is_summary(text):
         return None
 
-    # グループらしき本文(送信者: 本文)を分離
+    # グループ判定: (a)"送信者: 本文"  (b)"送信者 が 写真等を送信しました"
+    sender = None
+    body = None
     m = _GROUP_SPLIT.match(text)
     if m and title and m.group("sender").strip() != title:
-        # タイトル(グループ名)と送信者が違う → グループとみなし、送信者を相手にする
-        return {"contact": m.group("sender").strip(), "message": m.group("msg").strip()}
+        sender, body = m.group("sender").strip(), m.group("msg").strip()
+    else:
+        mm = _MEDIA_SENDER.match(text)
+        if mm and title and mm.group("sender").strip() != title:
+            sender, body = mm.group("sender").strip(), mm.group("action").strip()
+    if sender:
+        # 相手=送信者(本人)。グループ名は文脈として本文頭に残す(簡易対応・スキーマ変更なし)
+        gname = title.strip()
+        msg = ("【" + gname + "】" + body) if gname else body
+        return {"contact": sender, "message": msg}
 
+    # 1対1: title=相手名, text=本文
     return {"contact": title or "(不明)", "message": text}
 
 

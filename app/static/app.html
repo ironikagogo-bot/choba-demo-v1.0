@@ -155,6 +155,9 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 .demobar{margin:12px 16px 2px;padding:9px 12px;background:#FBF6E9;border:1px solid #E0C98A;border-radius:8px;align-items:center;gap:10px}
 .demobar .t{font-size:11px;color:var(--gold);font-weight:700;flex:1}
 .demobar button{background:var(--gold);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;font-family:inherit;flex:0 0 auto}
+.unksnooze{width:100%;margin-top:8px;background:none;border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:9px;font-size:12px;font-family:inherit}
+.quickrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.quickrow button{background:#EAEEF3;border:1px solid #c3cfdd;color:#3A5170;border-radius:999px;padding:6px 11px;font-size:12px;font-family:inherit}
 </style>
 </head>
 <body>
@@ -348,6 +351,19 @@ function fmtElapsed(ts) {
   if (s < 86400) return Math.floor(s / 3600) + '時間前';
   return Math.floor(s / 86400) + '日前';
 }
+function isMediaOnly(m) {
+  var t = (m.text || '').replace(/^【[^】]*】/, '').trim();
+  return /^(写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)を送信しました$/.test(t);
+}
+function mediaCardHtml(m) {
+  const g = (m.text || '').match(/^【([^】]*)】/);
+  const ctx = g ? `<span class="reason" style="color:#8D8674">グループ「${esc(g[1])}」</span>` : `<span class="reason" style="color:#8D8674">通知のみ</span>`;
+  return `<div class="card" id="card-${m.id}">
+    <div class="row"><span class="code">${esc(m.contact)}</span>${rankChip(m.rank)}${ctx}</div>
+    <div class="msg" style="color:#8D8674">${esc(m.text)}</div>
+    <div class="acts"><button data-act="skipped" data-mid="${m.id}">対応不要</button><button data-act="openline" data-mid="${m.id}">LINEを見る</button></div>
+  </div>`;
+}
 function rankChip(r) { return r ? `<span class="rank ${r}">${r}</span>` : ''; }
 function unknownCardHtml(m) {
   return `<div class="card unkcard" id="card-${m.id}">
@@ -361,9 +377,11 @@ function unknownCardHtml(m) {
       <button class="staff" data-act="unkstaff" data-contact="${esc(m.contact)}">店内<small>黒服・ママ</small></button>
       <button class="priv" data-act="unkpriv" data-contact="${esc(m.contact)}">私用<small>受け取らない</small></button>
     </div>
+    <button class="unksnooze" data-act="unksnooze" data-contact="${esc(m.contact)}">24時間 無視（分類しない）</button>
   </div>`;
 }
 function staffCardHtml(m, cls) {
+  if (isMediaOnly(m)) return mediaCardHtml(m);
   const alert = (cls === 'u')
     ? `<div class="alertbar" style="background:#3A5170"><span class="pulse"></span>店内・要対応<span class="el">${fmtElapsed(m.ts)}</span></div>`
     : '';
@@ -371,11 +389,19 @@ function staffCardHtml(m, cls) {
     ${alert}
     <div class="row"><span class="code">${esc(m.contact)}</span><span class="stafftag">店内</span><span class="reason" style="color:#3A5170">${esc(m.reason)}</span></div>
     <div class="msg">${esc(m.text)}</div>
-    <div class="staffnote">同僚モード — 営業ではなく短い実務返信を作ります</div>
+    <div class="staffnote">同僚モード — よく使う一言か、AI下書きで</div>
+    <div class="quickrow">
+      <button data-act="quick" data-mid="${m.id}" data-text="了解です！">了解です</button>
+      <button data-act="quick" data-mid="${m.id}" data-text="後ほどご連絡します。">後ほど連絡</button>
+      <button data-act="quick" data-mid="${m.id}" data-text="おつかれさまです！">おつかれさま</button>
+      <button data-act="quick" data-mid="${m.id}" data-text="今向かっています！">向かってます</button>
+      <button data-act="quick" data-mid="${m.id}" data-text="確認します！">確認します</button>
+    </div>
     <div class="draft-area">${draftAreaHtml(m.id)}</div>
   </div>`;
 }
 function msgCardHtml(m, cls) {
+  if (isMediaOnly(m)) return mediaCardHtml(m);
   if (m.unlinked) return unknownCardHtml(m);
   if (m.kind === 'staff') return staffCardHtml(m, cls);
   if (cls === 'u') {
@@ -460,6 +486,12 @@ document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'expandbatch') { expanded.add(Number(el.dataset.mid)); loadInbox(true); return; }
+  if (act === 'openline') { location.href = 'line://nv/chat'; return; }
+  if (act === 'unksnooze') {
+    const c = el.dataset.contact;
+    try { await api('/api/inbox/classify', { contact: c, action: 'snooze' }); } catch (e) {}
+    toast('24時間、この相手からの通知を止めます'); loadInbox(true); return;
+  }
   if (act === 'unkwork') {
     const c = el.dataset.contact;
     try { await api('/api/inbox/classify', { contact: c, action: 'work' }); }
@@ -525,6 +557,15 @@ document.addEventListener('click', async (ev) => {
       setTimeout(() => { location.href = 'line://nv/chat'; }, 400);
     }
     loadInbox(true);
+  }
+  if (act === 'quick') {
+    const text = el.dataset.text || '';
+    try { await navigator.clipboard.writeText(text); } catch (e) { return toast('コピーできませんでした。長押しでコピーしてください'); }
+    try { await api(`/api/messages/${mid}/action`, { action: 'replied' }); } catch (e) {}
+    cardState.delete(mid);
+    toast('コピー済み。LINEで貼って送ってください');
+    setTimeout(() => { location.href = getHandoff() === 'share' ? ('https://line.me/R/share?text=' + encodeURIComponent(text)) : 'line://nv/chat'; }, 400);
+    loadInbox(true); return;
   }
   if (act === 'replied' || act === 'stamped' || act === 'deferred' || act === 'skipped') {
     try {
@@ -896,5 +937,32 @@ setInterval(loadDesk, 5000);
 })();
 
 </script>
+
+<script>
+/* 触感フィードバック(可能な環境のみ): Android=Vibration API / iOS17.4+=スイッチ裏技(軽いタプティック) */
+(function(){
+  var lab, warned=false;
+  function ios(){ try{
+    if(!lab){ lab=document.createElement('label'); lab.setAttribute('aria-hidden','true');
+      lab.style.cssText='position:fixed;top:-200px;left:-200px;width:0;height:0;opacity:0;pointer-events:none';
+      var i=document.createElement('input'); i.type='checkbox'; i.setAttribute('switch',''); lab.appendChild(i);
+      document.body.appendChild(lab);
+    }
+    lab.click();
+  }catch(e){} }
+  window.haptic=function(strong){ try{
+    if(navigator.vibrate){ navigator.vibrate(strong?[12,26,12]:9); return; }
+    ios();
+  }catch(e){} };
+  document.addEventListener('click', function(ev){
+    var t=ev.target.closest('button,[data-act],[onclick],.seg span,.chip,.fp,.sendbtn,.cp,.handoff-opt,.b');
+    if(!t) return;
+    var s=((t.dataset&&t.dataset.act)||'')+' '+(t.className||'')+' '+(t.id||'');
+    var strong=/copygo|copy|send|record|orei|primary|save|deskapprove|demoReset|go\b/i.test(s);
+    window.haptic(strong);
+  }, true);
+})();
+</script>
+
 </body>
 </html>

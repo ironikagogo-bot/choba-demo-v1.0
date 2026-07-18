@@ -790,6 +790,10 @@ def inbox_classify(body: InboxClassify):
         crm.mute(name)
         crm.discard_unlinked(name)
         return {"ok": True}
+    if body.action == "snooze":
+        crm.snooze(name, 24)
+        crm.discard_unlinked(name)
+        return {"ok": True, "snoozed_hours": 24}
     raise HTTPException(400, "bad action")
 
 

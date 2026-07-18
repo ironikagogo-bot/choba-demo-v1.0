@@ -269,4 +269,31 @@ function nav(view,arg){
 }
 home();
 </script>
+
+<script>
+/* 触感フィードバック(可能な環境のみ): Android=Vibration API / iOS17.4+=スイッチ裏技(軽いタプティック) */
+(function(){
+  var lab, warned=false;
+  function ios(){ try{
+    if(!lab){ lab=document.createElement('label'); lab.setAttribute('aria-hidden','true');
+      lab.style.cssText='position:fixed;top:-200px;left:-200px;width:0;height:0;opacity:0;pointer-events:none';
+      var i=document.createElement('input'); i.type='checkbox'; i.setAttribute('switch',''); lab.appendChild(i);
+      document.body.appendChild(lab);
+    }
+    lab.click();
+  }catch(e){} }
+  window.haptic=function(strong){ try{
+    if(navigator.vibrate){ navigator.vibrate(strong?[12,26,12]:9); return; }
+    ios();
+  }catch(e){} };
+  document.addEventListener('click', function(ev){
+    var t=ev.target.closest('button,[data-act],[onclick],.seg span,.chip,.fp,.sendbtn,.cp,.handoff-opt,.b');
+    if(!t) return;
+    var s=((t.dataset&&t.dataset.act)||'')+' '+(t.className||'')+' '+(t.id||'');
+    var strong=/copygo|copy|send|record|orei|primary|save|deskapprove|demoReset|go\b/i.test(s);
+    window.haptic(strong);
+  }, true);
+})();
+</script>
+
 </body></html>

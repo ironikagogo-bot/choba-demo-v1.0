@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS muted_names(
   line_name TEXT PRIMARY KEY,
   created_ts REAL
 );
+CREATE TABLE IF NOT EXISTS snoozed_names(
+  line_name TEXT PRIMARY KEY,
+  until_ts  REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS pending_links(
   line_name TEXT PRIMARY KEY,
   last_text TEXT DEFAULT '',
@@ -70,6 +74,9 @@ def resolve_incoming(display_name: str) -> dict:
         return {"action": "unknown", "contact": None}
     with db.conn() as c:
         if c.execute("SELECT 1 FROM muted_names WHERE line_name=?", (name,)).fetchone():
+            return {"action": "muted", "contact": None}
+        _sn = c.execute("SELECT until_ts FROM snoozed_names WHERE line_name=?", (name,)).fetchone()
+        if _sn and _sn["until_ts"] > time.time():
             return {"action": "muted", "contact": None}
         r = c.execute("SELECT contact FROM contact_aliases WHERE line_name=?", (name,)).fetchone()
         if r:
@@ -168,6 +175,19 @@ def unmute(line_name: str):
     ensure()
     with db.conn() as c:
         c.execute("DELETE FROM muted_names WHERE line_name=?", ((line_name or "").strip(),))
+
+
+def snooze(line_name: str, hours: float = 24):
+    """その相手を一定時間だけ無視(通知/受信箱に出さない)。分類はしない・恒久muteでもない。"""
+    ensure()
+    name = (line_name or "").strip()
+    if not name:
+        return
+    with db.conn() as c:
+        c.execute("INSERT INTO snoozed_names(line_name,until_ts) VALUES(?,?) "
+                  "ON CONFLICT(line_name) DO UPDATE SET until_ts=excluded.until_ts",
+                  (name, time.time() + hours * 3600))
+        c.execute("DELETE FROM pending_links WHERE line_name=?", (name,))
 
 
 def list_muted() -> list:
