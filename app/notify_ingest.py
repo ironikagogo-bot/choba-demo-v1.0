@@ -23,7 +23,7 @@ _SUMMARY_PATTERNS = [
 ]
 
 # グループトークの本文が "送信者: 本文" 形式のとき分離する
-_GROUP_SPLIT = re.compile(r"^(?P<sender>[^:：]{1,30})[\s]*[:：][\s]*(?P<msg>.+)$", re.S)
+_GROUP_SPLIT = re.compile(r"^(?P<sender>[^:：！？。、,.\d\n]{1,20})[:：]\s*(?P<msg>.+)$", re.S)
 # メディア/アクション通知: "送信者 が 写真/スタンプ等 を送信しました" から送信者を抽出
 _MEDIA_SENDER = re.compile(r"^(?P<sender>.{1,30}?)が(?P<action>(?:写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)を送信しました)$")
 

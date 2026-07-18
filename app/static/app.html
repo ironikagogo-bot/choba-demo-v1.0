@@ -353,7 +353,12 @@ function fmtElapsed(ts) {
 }
 function isMediaOnly(m) {
   var t = (m.text || '').replace(/^【[^】]*】/, '').trim();
-  return /^(写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)を送信しました$/.test(t);
+  return /^(?:.{1,30}が)?(写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)を送信しました$/.test(t);
+}
+function mediaLabel(m) {
+  const t = (m.text || '').replace(/^【[^】]*】/, '');
+  const mt = t.match(/(写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)/);
+  return mt ? (mt[1] + 'を見る') : 'LINEで見る';
 }
 function mediaCardHtml(m) {
   const g = (m.text || '').match(/^【([^】]*)】/);
@@ -361,7 +366,7 @@ function mediaCardHtml(m) {
   return `<div class="card" id="card-${m.id}">
     <div class="row"><span class="code">${esc(m.contact)}</span>${rankChip(m.rank)}${ctx}</div>
     <div class="msg" style="color:#8D8674">${esc(m.text)}</div>
-    <div class="acts"><button data-act="skipped" data-mid="${m.id}">対応不要</button><button data-act="openline" data-mid="${m.id}">LINEを見る</button></div>
+    <div class="acts"><button data-act="skipped" data-mid="${m.id}">対応不要</button><button data-act="openline" data-mid="${m.id}">${mediaLabel(m)}</button></div>
   </div>`;
 }
 function rankChip(r) { return r ? `<span class="rank ${r}">${r}</span>` : ''; }
@@ -389,7 +394,6 @@ function staffCardHtml(m, cls) {
     ${alert}
     <div class="row"><span class="code">${esc(m.contact)}</span><span class="stafftag">店内</span><span class="reason" style="color:#3A5170">${esc(m.reason)}</span></div>
     <div class="msg">${esc(m.text)}</div>
-    <div class="staffnote">同僚モード — よく使う一言か、AI下書きで</div>
     <div class="quickrow">
       <button data-act="quick" data-mid="${m.id}" data-text="了解です！">了解です</button>
       <button data-act="quick" data-mid="${m.id}" data-text="後ほどご連絡します。">後ほど連絡</button>
@@ -397,7 +401,7 @@ function staffCardHtml(m, cls) {
       <button data-act="quick" data-mid="${m.id}" data-text="今向かっています！">向かってます</button>
       <button data-act="quick" data-mid="${m.id}" data-text="確認します！">確認します</button>
     </div>
-    <div class="draft-area">${draftAreaHtml(m.id)}</div>
+    <div class="acts"><button data-act="openline" data-mid="${m.id}">LINEを見る</button><button data-act="deferred" data-mid="${m.id}">後ほど対応</button></div>
   </div>`;
 }
 function msgCardHtml(m, cls) {
@@ -429,6 +433,7 @@ function msgCardHtml(m, cls) {
 }
 
 function rallyGroupHtml(contact, msgs) {
+  if (msgs.every(isMediaOnly)) return mediaCardHtml(msgs[msgs.length - 1]);
   const last = msgs[msgs.length - 1];
   return `<div class="card r" id="card-${last.id}">
     <div class="row"><span class="code">${esc(contact)}</span>${rankChip(last.rank)}<span class="time">${fmtTime(last.ts)}</span></div>
@@ -486,7 +491,13 @@ document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'expandbatch') { expanded.add(Number(el.dataset.mid)); loadInbox(true); return; }
-  if (act === 'openline') { location.href = 'line://nv/chat'; return; }
+  if (act === 'openline') {
+    const mid = Number(el.dataset.mid);
+    try { if (mid) await api(`/api/messages/${mid}/action`, { action: 'skipped' }); } catch (e) {}
+    if (mid) cardState.delete(mid);
+    setTimeout(() => { location.href = 'line://nv/chat'; }, 120);
+    loadInbox(true); return;
+  }
   if (act === 'unksnooze') {
     const c = el.dataset.contact;
     try { await api('/api/inbox/classify', { contact: c, action: 'snooze' }); } catch (e) {}
