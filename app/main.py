@@ -700,6 +700,14 @@ def contact_add_alias(code: str, body: AliasIn):
     return {"ok": True, "aliases": crm.aliases_for(code)}
 
 
+@app.post("/api/contacts/{code}/alias/remove")
+def contact_remove_alias(code: str, body: AliasIn):
+    from . import crm
+    if not db.get_contact(code):
+        raise HTTPException(404, "contact not found")
+    return crm.remove_alias(body.line_name, code)
+
+
 @app.get("/api/attrs")
 def attrs_defs():
     from . import crm
@@ -770,6 +778,14 @@ def seki_page():
 class InboxClassify(BaseModel):
     contact: str
     action: str   # work(顧客に登録) / private(私用除外)
+
+@app.post("/api/contacts/{code}/delete")
+def contact_delete(code: str):
+    from . import crm
+    if not db.get_contact(code):
+        raise HTTPException(404)
+    return crm.delete_contact(code)
+
 
 @app.post("/api/inbox/classify")
 def inbox_classify(body: InboxClassify):

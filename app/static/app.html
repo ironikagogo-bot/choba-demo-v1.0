@@ -164,7 +164,7 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 <div class="wrap">
   <header>
     <h1>帳場</h1><span class="mode" id="mode"></span>
-    <div class="desk"><span class="dot off" id="deskDot"></span><span id="deskText">デスク状態を確認中…</span></div>
+    <div class="desk" style="display:none"><span class="dot off" id="deskDot"></span><span id="deskText"></span></div>
   </header>
 
   <!-- 裏側：デスクコンソール（デスクの動きが見える黒帯） -->
@@ -259,10 +259,9 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
     </div>
 
     <div class="panel">
-      <h3>デスク（クラウドの見張り役）</h3>
-      <div id="deskWizard"><p>状態を確認しています…</p></div>
+      <h3>接続状態</h3>
+      <div id="deskWizard"><p>確認中…</p></div>
     </div>
-    <div class="note" style="text-align:center"><a href="/dev" style="color:var(--muted)">開発用の旧UIを開く</a></div>
   </section>
 </div>
 
@@ -744,19 +743,7 @@ function renderDesk(s) {
   const [cls, label] = map[s.desk_state] || ['off', s.desk_state];
   $('#deskDot').className = 'dot ' + cls;
   $('#deskText').textContent = label;
-  // 裏側コンソール
-  const band = $('#deskband');
-  if (s.console && s.console.length) {
-    band.style.display = 'block';
-    const con = $('#deskConsole');
-    con.innerHTML = s.console.map((l) => {
-      const d = new Date(l.ts * 1000);
-      return `<div>› ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} ${esc(l.text)}</div>`;
-    }).join('');
-    con.scrollTop = con.scrollHeight;
-  } else {
-    band.style.display = 'none';
-  }
+  const band = $('#deskband'); if (band) band.style.display = 'none';
   renderDeskWizard(s);
 }
 function renderDeskWizard(s) {
@@ -769,22 +756,10 @@ function renderDeskWizard(s) {
   box.innerHTML = html;
 }
 function renderDeskWizardAndroid(s) {
-  let html = `<div class="stat" style="margin-bottom:6px"><b>Android通知モード</b>（サブ端末の通知を受信）</div>`;
-  if (s.desk_state === 'none' || s.desk_state === 'failed') {
-    html += `<p>同じアカウントを入れたAndroid（サブ端末）が、LINEの着信通知を帳場に送ります。まず受け付けを開始してください。</p>
-      <button class="btn" data-act="deskstart">受け付けを準備する</button>`;
-  } else if (s.desk_state === 'awaiting_line_login') {
-    html += `<p>準備できました。「受け付けを開始」を押すと、Androidからの通知を受け取ります。</p>
-      <button class="btn" data-act="deskapprove">受け付けを開始する</button>`;
-  } else if (s.desk_state === 'active') {
-    html += `<div class="stat">✓ 受信中 — これまで ${s.android_count || 0} 件の通知を取り込み</div>
-      <p>Androidの転送アプリから <code>/api/android/notify</code> に届いた通知を、仕分け→下書き→この端末に通知します。裏側コンソールに生の通知が出るので、取り違えがあれば私に見せて調整できます。</p>
-      <button class="btn ghost" data-act="deskstop">受け付けを停止する</button>`;
-  } else {
-    html += `<div class="stat">状態: ${esc(s.desk_state)}</div>`;
-  }
-  html += `<p style="color:var(--shu)">注意：実LINE読み取りはLINE利用規約上グレーで、凍結リスクは残ります。まずはサブアカウントで検証してください。</p>`;
-  return html;
+  const n = s.android_count || 0;
+  return `<div class="stat"><b>受信中</b> — Androidの通知を受け付けています${n ? `（これまで ${n} 件取り込み）` : ''}</div>
+    <p style="color:var(--muted);font-size:12px;line-height:1.7">サブ端末が受け取ったLINEの通知を、自動で仕分け・下書きします。</p>
+    <p style="color:var(--shu);font-size:11.5px;line-height:1.7">※ LINEの読み取りは規約上グレーで凍結リスクがあります。サブアカウントでの利用を推奨。</p>`;
 }
 function renderDeskWizardDemo(s) {
   let html = '';

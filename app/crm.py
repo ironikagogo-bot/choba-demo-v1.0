@@ -155,6 +155,14 @@ def add_alias(line_name: str, contact: str):
         )
 
 
+def remove_alias(line_name: str, contact: str):
+    """LINE表示名の紐付けを1件解除する(顧客本体は消さない)。"""
+    ensure()
+    with db.conn() as c:
+        c.execute("DELETE FROM contact_aliases WHERE line_name=? AND contact=?", (line_name, contact))
+    return {"ok": True, "aliases": aliases_for(contact)}
+
+
 def aliases_for(contact: str) -> list:
     ensure()
     with db.conn() as c:
@@ -256,6 +264,7 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
     with db.conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM contacts ORDER BY rank, code")]
         rows = [r for r in rows if (r.get("kind") or "customer") == "customer"]
+        rows = [r for r in rows if r.get("linked") != 0]  # 未紐付け(未分類)は顧客リストに出さない
         if attr_key:
             keep = set(r["contact"] for r in c.execute(
                 "SELECT contact FROM contact_attrs WHERE akey=?" +
@@ -265,9 +274,10 @@ def search_contacts(q: str = "", attr_key: str = "", attr_val: str = "") -> list
     if q:
         rows = [x for x in rows if q in (x.get("code") or "") or q in (x.get("note") or "")
                 or q in (x.get("tags") or "")]
-    # 属性も添える
+    # 属性とLINE紐付けも添える(リストの「未紐付け」表示に必要)
     for x in rows:
         x["attrs"] = get_attrs(x["code"])
+        x["aliases"] = aliases_for(x["code"])
     return rows
 
 
@@ -322,6 +332,12 @@ def discard_unlinked(code: str):
         c.execute("DELETE FROM contacts WHERE code=?", (code,))
 
 
+def delete_contact(code: str):
+    """顧客を完全削除(受信・下書き・実績・属性・別名・本体を全消去)。"""
+    discard_unlinked(code)
+    return {"ok": True, "deleted": code}
+
+
 def mark_staff(code: str):
     """店内・業務(黒服/ママ/同僚)として登録。営業対象外・顧客リスト/実績に載せない。"""
     ensure()
@@ -346,7 +362,10 @@ def list_roster(kinds: str = "staff,peer,excolleague") -> list:
     want = set(k.strip() for k in (kinds or "").split(",") if k.strip())
     with db.conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM contacts ORDER BY kind, rank, code")]
-    return [r for r in rows if (r.get("kind") or "customer") in want]
+    rows = [r for r in rows if (r.get("kind") or "customer") in want]
+    for r in rows:
+        r["aliases"] = aliases_for(r["code"])
+    return rows
 
 
 def set_kind(code: str, kind: str) -> dict:

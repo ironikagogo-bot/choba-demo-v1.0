@@ -60,6 +60,7 @@ body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',sa
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
 .btn.mini{flex:0 0 auto;font-size:12px;padding:8px 13px;border-radius:5px;background:var(--goldsoft);color:var(--gold);border:1px solid #E7D9AE;font-weight:700}
 .aliasrow{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:13px;background:var(--panel)}
+.alx{border:1px solid #d8cfc0;background:#faf6ee;color:#a05a4a;border-radius:8px;font-size:11px;padding:4px 10px;font-family:inherit}
 .trnote{font-size:12px;color:var(--gold);background:var(--goldsoft);border-bottom:1px solid #E7D9AE;padding:10px 14px;line-height:1.7}
 .trcard{background:var(--panel);margin:10px 14px;border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(60,50,30,.05)}
 .trtop{display:flex;align-items:center;gap:8px;margin-bottom:7px}
@@ -84,6 +85,8 @@ body{background:var(--bg);color:var(--text);font-family:'Zen Kaku Gothic New',sa
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(43,40,35,.92);color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;z-index:100;opacity:0;transition:.2s}
 .toast.show{opacity:1}
 .err{margin:14px;background:var(--shusoft);border:1px solid #E7C4BC;color:var(--shu);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7}
+.delbtn{width:100%;background:#fff;border:1px solid #E7C4BC;color:#C0402C;border-radius:9px;padding:11px;font-size:13px;font-family:inherit}
+.delbtn.armed{background:#C0402C;color:#fff;border-color:#C0402C;font-weight:700}
 </style>
 </head>
 <body>
@@ -193,9 +196,15 @@ async function viewCard(code){
     +'<div class="sec">来店・同伴（返信操作から自動記録）</div>'+visitRows
     +'<div class="sec" style="color:#5E8A5D">＋ ポジティブ（喜ぶ・強み→活かす）</div><div class="memo" style="background:#EEF4EC;border-top:1px solid #C4D8C0;border-bottom:1px solid #C4D8C0;color:#3f6b3d">'+esc(d.note_pos||"—")+'</div>'
     +'<div class="sec" style="color:#C0402C">－ ネガティブ（地雷・注意→避ける／本文には出しません）</div><div class="memo" style="background:#FBEDEA;border-top:1px solid #E7C4BC;border-bottom:1px solid #E7C4BC;color:#8a2f22">'+esc(d.note_neg||"—")+'</div>'
-    +'<div class="sec">自由メモ（中立）</div><div class="memo">'+esc(d.note||"—")+'</div><div style="height:24px"></div>';
+    +'<div class="sec">自由メモ（中立）</div><div class="memo">'+esc(d.note||"—")+'</div>'+'<div style="padding:14px 16px 28px"><button class="delbtn" onclick="delContact(\''+encodeURIComponent(d.code)+'\',this)">この顧客を削除</button></div>';
 }
 
+function delContact(code, btn){
+  code=decodeURIComponent(code);
+  if(btn.getAttribute("data-c")!=="1"){ btn.setAttribute("data-c","1"); btn.textContent="本当に削除？もう一度タップ"; btn.classList.add("armed");
+    setTimeout(function(){ if(btn){btn.setAttribute("data-c","0"); btn.textContent="この顧客を削除"; btn.classList.remove("armed");} }, 3000); return; }
+  api("/api/contacts/"+encodeURIComponent(code)+"/delete","POST").then(function(){ toast("削除しました"); location.hash="list"; }).catch(function(e){ toast("失敗: "+e.message); });
+}
 /* ---------- EDIT / NEW ---------- */
 var EF={};
 var EF_ISNEW=false;
@@ -218,7 +227,7 @@ function paintEdit(){
   var standSeg=STANDS.map(function(r){return '<span class="'+(EF.stand===r[0]?"on":"")+'" onclick="EF.stand=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
   var KINDS=[["customer","顧客"],["peer","同業者"],["staff","店内"],["excolleague","元同僚"]];
   var kindSeg=KINDS.map(function(r){return '<span class="'+(EF.kind===r[0]?"on":"")+'" onclick="EF.kind=\''+r[0]+'\';renderEdit()">'+r[1]+'</span>'}).join("");
-  var aliasList=EF.aliases.map(function(a){return '<div class="aliasrow">🔗 '+esc(a)+'</div>'}).join("");
+  var aliasList=EF.aliases.map(function(a,i){return '<div class="aliasrow">🔗 <span style="flex:1">'+esc(a)+'</span><button class="alx" onclick="delAlias('+i+')">解除</button></div>'}).join("");
   var attrItems=DEFS.map(function(df){
     var v=EF.attrs[df.key]||"";
     var inp;
@@ -280,6 +289,12 @@ async function addAlias(){
   if(!v)return;
   if(!EF.code){toast("先に名前を入れて保存してください");return;}
   try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/alias","POST",{line_name:v}); EF.aliases.push(v); toast("紐付けを追加"); paintEdit(); }
+  catch(e){toast("失敗: "+e.message)}
+}
+async function delAlias(i){
+  syncEF();
+  var a=EF.aliases[i]; if(a===undefined)return;
+  try{ await api("/api/contacts/"+encodeURIComponent(EF.code)+"/alias/remove","POST",{line_name:a}); EF.aliases.splice(i,1); toast("紐付けを解除しました"); paintEdit(); }
   catch(e){toast("失敗: "+e.message)}
 }
 async function saveEdit(isNew){
