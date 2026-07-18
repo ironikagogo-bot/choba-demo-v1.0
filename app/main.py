@@ -276,9 +276,21 @@ async def android_notify(request: Request):
 
 @app.get("/api/inbox")
 def inbox():
+    from .notify_ingest import is_call_notice
     msgs = db.open_messages()
     out = {"urgent": [], "rally": {}, "batch": [], "batch_time": config.BATCH_TIME}
+    # 通話系通知の残骸(v25より前に取り込まれた「音声通話を着信中」等)は表示せず閉じる
+    kept = []
     for m in msgs:
+        if is_call_notice(m["text"]):
+            db.set_status(m["id"], "skipped")
+            continue
+        kept.append(m)
+    # 即対応に出ている本文と同一のラリー項目は「通知の再掲」→表示せず閉じる
+    # (短文の本物の連投を巻き込まないよう10字以上のみ対象)
+    urgent_keys = {(m["contact"], (m["text"] or "").strip())
+                   for m in kept if m["category"] == "urgent"}
+    for m in kept:
         _c = db.get_contact(m["contact"]) or {}
         m["rank"] = _c.get("rank", "B")
         m["unlinked"] = 1 if (_c.get("linked") == 0) else 0
@@ -286,6 +298,10 @@ def inbox():
         if m["category"] == "urgent":
             out["urgent"].append(m)
         elif m["category"] == "rally":
+            key = (m["contact"], (m["text"] or "").strip())
+            if len(key[1]) >= 10 and key in urgent_keys:
+                db.set_status(m["id"], "skipped")
+                continue
             out["rally"].setdefault(m["contact"], []).append(m)
         else:
             out["batch"].append(m)

@@ -17,7 +17,7 @@ COPY . .
 # 認証・トークン・APIキー・DB保存先は Render の環境変数で設定すること:
 #   CHOUBA_PASSWORD(玄関パスワード) / CHOUBA_INGEST_TOKEN(Android/ショートカット用)
 #   ANTHROPIC_API_KEY / CHOUBA_DB(永続ディスク使用時 例 /var/data/chouba.db)
-ENV CHOUBA_DEMO=1 CHOUBA_WATCHER=sim
+ENV CHOUBA_WATCHER=android
 
 # HF Spaces は 7860 を期待。Render/Railway/Fly は $PORT を渡してくるのでそれを優先。
 EXPOSE 7860

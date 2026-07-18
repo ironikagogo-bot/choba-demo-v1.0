@@ -22,6 +22,19 @@ _SUMMARY_PATTERNS = [
     re.compile(r"新着メッセージ"),
 ]
 
+# 通話系通知(不在着信/着信中/通話中/応答なし)は取り込まない:
+# 着信はiPhone本体が鳴る＋LINE本体に不在着信表示が残るため、帳場で二重管理しない(本人判断 2026-07-18)。
+_CALL_TITLE = re.compile(r"(不在着信|着信中|通話中|応答なし)")
+# 本文が通話開始の定型文"だけ"のとき(グループ通話等)。通常メッセージ内に
+# 「不在着信」等の語が含まれるだけでは捨てない(誤爆防止)。
+_CALL_TEXT = re.compile(r"^(?:.{1,30}が)?(?:LINE)?(?:グループ通話|ビデオ通話|音声通話|通話)(?:を開始しました|に招待しました|に参加しました|を?着信中.{0,3}|応答なし)$")
+
+
+def is_call_notice(text: str) -> bool:
+    """本文が通話系通知そのもの("LINE音声通話を着信中…"等)か。過去に取り込んだ残骸の掃除にも使う。"""
+    t = re.sub(r"^【[^】]*】", "", (text or "").strip()).strip()
+    return bool(_CALL_TEXT.match(t) or re.match(r"^LINE(?:不在着信|着信中)$", t))
+
 # グループトークの本文が "送信者: 本文" 形式のとき分離する
 _GROUP_SPLIT = re.compile(r"^(?P<sender>[^:：！？。、,.\d\n]{1,20})[:：]\s*(?P<msg>.+)$", re.S)
 # メディア/アクション通知: "送信者 が 写真/スタンプ等 を送信しました" から送信者を抽出
@@ -50,6 +63,10 @@ def parse_line_notification(title: str, text: str, package: str | None = None) -
     if title in ("LINE", "") and (not text or _is_summary(text)):
         return None
     if _is_summary(text):
+        return None
+    # 通話系(不在着信等)は取り込まない。title側("LINE不在着信")か、
+    # 本文が通話開始の定型文だけの場合のみ(本文に語が混ざる通常文は通す)。
+    if _CALL_TITLE.search(title) or _CALL_TEXT.match(text):
         return None
 
     # グループ判定: (a)"送信者: 本文"  (b)"送信者 が 写真等を送信しました"
@@ -87,9 +104,13 @@ class NotifyDedup:
       本物の『はい』『はい』を消していたため。3秒より離れた同一本文は通す。
     """
 
+    LONG_TEXT_MIN = 15      # この文字数以上は「同一本文の再掲」を長い窓で弾く
+    LONG_WINDOW = 30 * 60   # 長文の同一本文は30分以内なら再掲とみなす(実測: ロック解除時に分単位で再掲される)
+
     def __init__(self, window_sec: float = 3.0):
         self.window_sec = window_sec
-        self._seen = {}        # (contact, message) -> ts
+        self._seen = {}        # (contact, message) -> ts   短文用(3秒窓)
+        self._seen_long = {}   # (contact, message) -> ts   長文用(30分窓)
         self._seen_ids = {}    # msg_id(key+ts) -> ts
 
     def should_process(self, contact: str, message: str,
@@ -99,6 +120,9 @@ class NotifyDedup:
         for k, ts in list(self._seen.items()):
             if now - ts > self.window_sec:
                 del self._seen[k]
+        for k, ts in list(self._seen_long.items()):
+            if now - ts > self.LONG_WINDOW:
+                del self._seen_long[k]
         for k, ts in list(self._seen_ids.items()):
             if now - ts > 60:
                 del self._seen_ids[k]
@@ -108,8 +132,14 @@ class NotifyDedup:
                 return False
             self._seen_ids[msg_id] = now
         # 2) ts揺れ対策: 同一(相手,本文)を短い窓内に見た → 再掲とみなす
+        #    短文(「はい」等)は3秒窓のみ=本物の連投を消さない。
+        #    長文(15字以上)の同一本文は30分窓=通知の再掲(ロック解除時等)を弾く。
         pair = (contact, message)
         if pair in self._seen:
             return False
         self._seen[pair] = now
+        if len(message) >= self.LONG_TEXT_MIN:
+            if pair in self._seen_long:
+                return False
+            self._seen_long[pair] = now
         return True

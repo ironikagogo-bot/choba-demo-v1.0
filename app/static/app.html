@@ -136,9 +136,13 @@ nav .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--shu);
 .bcollapsed .bn{font-size:13px;font-weight:700}
 .bcollapsed .bi{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bcollapsed .chev{color:var(--muted);font-size:15px}
-.thread{margin:8px 0 2px;padding:9px 0 3px;border-top:1px dashed var(--line)}
+.thread{margin:6px 0 0;padding:7px 0 1px;border-top:1px dashed var(--line)}
 .thread .msg{background:#F0EADC;border-radius:10px;border-top-left-radius:3px;padding:6px 10px;margin-bottom:5px}
 .thread .msg + .msg{border-top:none;padding-top:6px}
+.thread .msg.mini{font-size:12px;line-height:1.45;padding:4px 9px;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.thread .msg.mini.mm{color:#8D8674;background:#F4EFE4;font-size:11px;padding:3px 9px}
+.roldbtn{display:block;width:100%;border:none;background:none;color:#8D8674;font-size:11px;padding:2px 0 6px;text-align:left;font-family:inherit}
+.rcnt{font-size:10px;color:var(--gold);letter-spacing:.04em;white-space:nowrap}
 
 /* 店内・業務(黒服/ママ) */
 .unkchoice3{display:flex;gap:6px;margin-top:8px}
@@ -431,13 +435,28 @@ function msgCardHtml(m, cls) {
   </div>`;
 }
 
+function mediaMini(m) {
+  const t = (m.text || '').replace(/^【[^】]*】/, '');
+  const mt = t.match(/(写真|スタンプ|動画|画像|ファイル|ボイスメッセージ|アルバム|位置情報|連絡先|ギフト)/);
+  return '📎 ' + (mt ? mt[1] : '通知');
+}
 function rallyGroupHtml(contact, msgs) {
   if (msgs.every(isMediaOnly)) return mediaCardHtml(msgs[msgs.length - 1]);
   const last = msgs[msgs.length - 1];
+  const items = msgs.map((m) => isMediaOnly(m)
+    ? `<div class="msg mini mm">${esc(mediaMini(m))}</div>`
+    : `<div class="msg mini">${esc(m.text)}</div>`);
+  const MAX = 3;
+  let older = '', btn = '';
+  let recent = items.join('');
+  if (items.length > MAX) {
+    older = `<div id="rold-${last.id}" style="display:none">${items.slice(0, items.length - MAX).join('')}</div>`;
+    btn = `<button class="roldbtn" data-act="rold" data-mid="${last.id}">前の${items.length - MAX}通を表示</button>`;
+    recent = items.slice(items.length - MAX).join('');
+  }
   return `<div class="card r" id="card-${last.id}">
-    <div class="row"><span class="code">${esc(contact)}</span>${rankChip(last.rank)}<span class="time">${fmtTime(last.ts)}</span></div>
-    <div class="thread">${msgs.map((m) => `<div class="msg">${esc(m.text)}</div>`).join('')}</div>
-    <div class="reason">連投 ${msgs.length}通 — まとめて1つ返信します</div>
+    <div class="row"><span class="code">${esc(contact)}</span>${rankChip(last.rank)}<span class="rcnt">連投${msgs.length}通・1返信</span><span class="time">${fmtTime(last.ts)}</span></div>
+    <div class="thread">${btn}${older}${recent}</div>
     <div class="draft-area">${draftAreaHtml(last.id)}</div>
   </div>`;
 }
@@ -490,6 +509,11 @@ document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'expandbatch') { expanded.add(Number(el.dataset.mid)); loadInbox(true); return; }
+  if (act === 'rold') {
+    const d = document.getElementById('rold-' + el.dataset.mid);
+    if (d) { d.style.display = 'block'; el.style.display = 'none'; }
+    return;
+  }
   if (act === 'openline') {
     const mid = Number(el.dataset.mid);
     try { if (mid) await api(`/api/messages/${mid}/action`, { action: 'skipped' }); } catch (e) {}
